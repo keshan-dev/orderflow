@@ -64,3 +64,36 @@ def test_late_event_does_not_move_the_order_backwards(handler, engine, order_id)
     handler(stock_reserved(order_id))  # a different event that arrives too late
     assert get_order(engine, order_id)["status"] == "CANCELLED"
     assert [e.event_type for e in events_after_order_created(engine)] == ["OrderCancelled"]
+
+
+def payment_succeeded(order_id):
+    return Event(
+        "PaymentSucceeded", order_id, {"payment_id": str(uuid.uuid4()), "amount_cents": 1000}
+    )
+
+
+def test_payment_succeeded_confirms_the_order(handler, engine, order_id):
+    handler(stock_reserved(order_id))
+    handler(payment_succeeded(order_id))
+    assert get_order(engine, order_id)["status"] == "CONFIRMED"
+    types = [e.event_type for e in events_after_order_created(engine)]
+    assert types == ["ChargePaymentRequested", "OrderConfirmed"]
+
+
+def test_payment_failed_starts_compensation(handler, engine, order_id):
+    handler(stock_reserved(order_id))
+    handler(Event("PaymentFailed", order_id, {"reason": "card_declined"}))
+    order = get_order(engine, order_id)
+    assert (order["status"], order["cancel_reason"]) == (
+        "STOCK_RESERVED",
+        "payment_failed:card_declined",
+    )
+    assert events_after_order_created(engine)[-1].event_type == "ReleaseStockRequested"
+
+
+def test_late_payment_after_cancellation_is_refunded(handler, engine, order_id):
+    handler(stock_reserved(order_id))
+    handler(Event("PaymentFailed", order_id, {"reason": "provider_timeout"}))
+    handler(payment_succeeded(order_id))  # arrives late
+    assert get_order(engine, order_id)["status"] == "STOCK_RESERVED"  # never CONFIRMED
+    assert events_after_order_created(engine)[-1].event_type == "RefundPaymentRequested"

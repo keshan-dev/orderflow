@@ -1,24 +1,17 @@
 """HTTP API for inventory-service."""
 
 import logging
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel
+from fastapi import FastAPI, Response
 
 from inventory_service.catalog import list_products
 from inventory_service.config import Settings
 from inventory_service.handlers import InventoryEventHandler
 from inventory_service.reservations import Reservations
-from inventory_service.stock import (
-    InvalidItemsError,
-    RedisStock,
-    load_stock_into_redis,
-    normalize_items,
-)
+from inventory_service.stock import RedisStock, load_stock_into_redis
 from inventory_service.sweeper import Sweeper
 from orderflow_common.connections import (
     make_engine,
@@ -31,15 +24,6 @@ from orderflow_common.kafka import EventConsumer
 from orderflow_common.logging import configure_logging
 
 log = logging.getLogger(__name__)
-
-
-class ReserveRequest(BaseModel):
-    order_id: uuid.UUID
-    items: list[dict[str, Any]]
-
-
-class ReleaseRequest(BaseModel):
-    order_id: uuid.UUID
 
 
 def _try_load_stock(app: FastAPI) -> bool:
@@ -92,25 +76,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_products() -> list[dict[str, Any]]:
         cfg: Settings = app.state.settings
         return list_products(app.state.engine, app.state.redis, cfg.product_cache_seconds)
-
-    # Temporary endpoints for manual testing in M1 and M2. M3 replaces them with Kafka events.
-    @app.post("/internal/reserve")
-    def internal_reserve(body: ReserveRequest) -> dict[str, Any]:
-        try:
-            items = normalize_items(body.items)
-        except InvalidItemsError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        result = app.state.reservations.reserve(body.order_id, items)
-        return {
-            "outcome": result.outcome,
-            "reason": result.reason,
-            "lines": [line.as_dict() for line in result.lines],
-        }
-
-    @app.post("/internal/release")
-    def internal_release(body: ReleaseRequest) -> dict[str, Any]:
-        result = app.state.reservations.release(body.order_id)
-        return {"outcome": result.outcome, "lines": [line.as_dict() for line in result.lines]}
 
     @app.get("/readyz")
     def readyz(response: Response) -> dict[str, bool]:

@@ -510,6 +510,27 @@ services:
     mem_limit: 64m
     restart: unless-stopped
 
+  reconcile:
+    image: orderflow/reconcile:dev
+    build:
+      context: ../..
+      dockerfile: services/reconcile/Dockerfile
+    # On demand only:  docker compose -f deploy/compose/docker-compose.yml run --rm reconcile
+    profiles: ["tools"]
+    # Reads every database as the read-only cdc user; it never changes anything.
+    environment:
+      ORDERS_DATABASE_URL: postgresql://cdc:${CDC_DB_PASSWORD}@postgres:5432/orders_db
+      INVENTORY_DATABASE_URL: postgresql://cdc:${CDC_DB_PASSWORD}@postgres:5432/inventory_db
+      PAYMENTS_DATABASE_URL: postgresql://cdc:${CDC_DB_PASSWORD}@postgres:5432/payments_db
+      REDIS_URL: redis://redis:6379/0
+      S3_BUCKET: orderflow-invoices
+      S3_ENDPOINT_URL: http://s3:8333
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+      STUCK_AFTER_SECONDS: ${STUCK_AFTER_SECONDS:-300}
+    mem_limit: 192m
+    restart: "no"
+
 volumes:
   postgres-data:
   redis-data:

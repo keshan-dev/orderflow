@@ -1,0 +1,18 @@
+[project]
+name = "reconcile"
+version = "0.1.0"
+description = "Read-only consistency checks across every OrderFlow service."
+requires-python = ">=3.13"
+dependencies = [
+    "orderflow-common",
+    "inventory-service",
+    "boto3>=1.40",
+]
+
+[tool.uv.sources]
+orderflow-common = { workspace = true }
+inventory-service = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"

@@ -101,3 +101,15 @@ def test_search_by_product_name(index):
     client.indices.refresh(index=name)
     hits = client.search(index=name, body={"query": {"match": {"product_names": "lamp"}}})
     assert [h["_id"] for h in hits["hits"]["hits"]] == [order_id]
+
+
+def test_document_that_does_not_fit_the_mapping_is_returned_as_rejected(index):
+    client, name = index
+    good, bad = str(uuid.uuid4()), str(uuid.uuid4())
+    broken = order("PENDING", bad)
+    broken["created_at"] = "not a date"  # the mapping says date: OpenSearch refuses it
+    rejected = OrderIndexer(client, name).index_events(
+        [event("OrderCreated", order("PENDING", good), 0), event("OrderCreated", broken, 0)]
+    )
+    assert [str(e.order_id) for e in rejected] == [bad]
+    assert stored(client, name, good)["status"] == "PENDING"

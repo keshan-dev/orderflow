@@ -33,11 +33,18 @@ pytestmark = pytest.mark.skipif(not kafka_running(), reason="Compose Kafka is no
 
 @pytest.fixture
 def topic():
+    """A throwaway topic plus its .retry and .dlq topics, like the real ones."""
     name = f"test.consumer.{uuid.uuid4().hex[:8]}"
+    names = [name, f"{name}.retry", f"{name}.dlq"]
     admin = AdminClient({"bootstrap.servers": BOOTSTRAP})
-    admin.create_topics([NewTopic(name, num_partitions=1, replication_factor=1)])[name].result(10)
+    created = admin.create_topics(
+        [NewTopic(n, num_partitions=1, replication_factor=1) for n in names]
+    )
+    for future in created.values():
+        future.result(10)
     yield name
-    admin.delete_topics([name])[name].result(10)
+    for future in admin.delete_topics(names).values():
+        future.result(10)
 
 
 def produce(topic: str, *values: bytes) -> None:
@@ -99,13 +106,93 @@ def test_failing_handler_is_retried_until_it_works(topic):
     assert len(calls) == 5
 
 
-def test_malformed_message_is_skipped(topic):
+def read_all(topic: str) -> list:
+    """Every message on a topic, read from the start with a throwaway group."""
+    from confluent_kafka import Consumer
+
+    consumer = Consumer(
+        {
+            "bootstrap.servers": BOOTSTRAP,
+            "group.id": f"r-{uuid.uuid4()}",
+            "auto.offset.reset": "earliest",
+        }
+    )
+    consumer.subscribe([topic])
+    messages, idle = [], 0
+    while idle < 5:
+        message = consumer.poll(1.0)
+        if message is None or message.error():
+            idle += 1
+            continue
+        messages.append(message)
+    consumer.close()
+    return messages
+
+
+def headers_of(message) -> dict[str, str]:
+    return {key: value.decode() for key, value in message.headers() or []}
+
+
+def test_malformed_message_goes_to_the_dlq_and_does_not_block(topic):
     seen: list[str] = []
+    group = f"g-{uuid.uuid4().hex[:6]}"
     produce(topic, b"not json", event_bytes("Good"))
-    consumer = run(topic, f"g-{uuid.uuid4().hex[:6]}", lambda e: seen.append(e.event_type))
+    consumer = run(topic, group, lambda e: seen.append(e.event_type))
     wait_for(lambda: seen == ["Good"])
     assert consumer.healthy
     consumer.stop()
+    [dead] = read_all(f"{topic}.dlq")
+    assert dead.value() == b"not json"
+    assert headers_of(dead)["x-consumer-group"] == group
+
+
+def test_temporary_failure_is_retried_from_the_retry_topic(topic):
+    calls: list[int] = []
+
+    def fails_3_times_then_works(event: Event) -> None:
+        calls.append(1)
+        if len(calls) <= 3:  # the 3 quick in-memory attempts all fail
+            raise ConnectionError("database down")
+
+    produce(topic, event_bytes("Order"))
+    consumer = run(topic, f"g-{uuid.uuid4().hex[:6]}", fails_3_times_then_works)
+    wait_for(lambda: len(calls) == 4, seconds=30)  # 4th call comes from the retry topic
+    consumer.stop()
+    [retried] = read_all(f"{topic}.retry")
+    assert headers_of(retried)["x-attempt"] == "1"
+    assert read_all(f"{topic}.dlq") == []
+
+
+def test_event_that_keeps_failing_ends_in_the_dlq(topic):
+    from orderflow_common.kafka import EventConsumer
+
+    def always_fails(event: Event) -> None:
+        raise ConnectionError("database down")
+
+    produce(topic, event_bytes("Order"))
+    consumer = EventConsumer(
+        BOOTSTRAP, f"g-{uuid.uuid4().hex[:6]}", [topic], always_fails, max_retry_attempts=1
+    )
+    consumer.start()
+    wait_for(lambda: len(read_all(f"{topic}.dlq")) == 1, seconds=40)
+    consumer.stop()
+    [dead] = read_all(f"{topic}.dlq")
+    assert headers_of(dead)["x-attempt"] == "1"
+
+
+def test_retry_messages_of_another_group_are_ignored(topic):
+    from orderflow_common.deadletter import DeadLetterPublisher
+
+    seen: list[str] = []
+    produce(topic, event_bytes("Mine"))
+    first = read_all(topic)[0]
+    DeadLetterPublisher(BOOTSTRAP).to_retry(topic, first, "some-other-group", 1, "boom")
+
+    consumer = run(topic, f"g-{uuid.uuid4().hex[:6]}", lambda e: seen.append(e.event_type))
+    wait_for(lambda: seen == ["Mine"])
+    time.sleep(6)  # the other group's retry is due after 2 seconds
+    consumer.stop()
+    assert seen == ["Mine"]
 
 
 def test_batch_consumer_gets_many_events_at_once_and_retries_failed_batches(topic):

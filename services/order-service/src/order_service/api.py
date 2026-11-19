@@ -6,15 +6,19 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, Response
+from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from order_service.config import Settings
+from order_service.idempotency import Begin, IdempotencyStore
 from order_service.orders import NewOrder, create_order
 from orderflow_common.connections import make_engine, make_redis, postgres_ok, redis_ok
 from orderflow_common.logging import configure_logging
 
 log = logging.getLogger(__name__)
+
+MAX_KEY_LENGTH = 100
 
 
 class OrderItemIn(BaseModel):
@@ -37,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = cfg
         app.state.engine = make_engine(cfg.database_url)
         app.state.redis = make_redis(cfg.redis_url)
+        app.state.idempotency = IdempotencyStore(app.state.redis)
         log.info("order-service started")
         yield
         app.state.redis.close()
@@ -53,12 +58,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/orders", status_code=202)
     def post_order(
         body: CreateOrderIn,
-        response: Response,
-        idempotency_key: Annotated[str, Header(min_length=1, max_length=100)],
-    ) -> dict[str, Any]:
-        result = create_order(app.state.engine, idempotency_key, body.to_new_order())
-        response.headers["Location"] = f"/api/orders/{result.order_id}"
-        return {"order_id": str(result.order_id), "status": "PENDING"}
+        idempotency_key: Annotated[str | None, Header()] = None,
+    ) -> JSONResponse:
+        if not idempotency_key or len(idempotency_key) > MAX_KEY_LENGTH:
+            raise HTTPException(
+                400, f"Idempotency-Key header is required (1 to {MAX_KEY_LENGTH} chars)"
+            )
+        new_order = body.to_new_order()
+        fingerprint = new_order.fingerprint()
+        store: IdempotencyStore = app.state.idempotency
+
+        begin = store.begin(idempotency_key, fingerprint)
+        if begin.state is Begin.MISMATCH:
+            raise HTTPException(422, "Idempotency-Key was already used for a different request")
+        if begin.state is Begin.IN_PROGRESS:
+            raise HTTPException(
+                409, "the first request with this key is still running", {"Retry-After": "1"}
+            )
+        if begin.state is Begin.REPLAY:
+            return _order_response(begin.status_code or 202, begin.body or {}, replayed=True)
+
+        try:
+            result = create_order(app.state.engine, idempotency_key, new_order)
+        except Exception:
+            store.abandon(idempotency_key)
+            raise
+        if not result.same_request:
+            raise HTTPException(422, "Idempotency-Key was already used for a different request")
+        payload = {"order_id": str(result.order_id), "status": "PENDING"}
+        store.finish(idempotency_key, fingerprint, 202, payload)
+        return _order_response(202, payload, replayed=not result.created)
 
     @app.get("/readyz")
     def readyz(response: Response) -> dict[str, bool]:
@@ -72,6 +101,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return checks
 
     return app
+
+
+def _order_response(status_code: int, payload: dict[str, Any], replayed: bool) -> JSONResponse:
+    headers = {"Location": f"/api/orders/{payload['order_id']}"}
+    if replayed:
+        headers["Idempotent-Replayed"] = "true"
+    return JSONResponse(payload, status_code=status_code, headers=headers)
 
 
 def main() -> FastAPI:

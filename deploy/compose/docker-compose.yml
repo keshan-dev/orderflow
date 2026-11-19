@@ -235,6 +235,20 @@ services:
     mem_limit: 128m
     restart: "no"
 
+  mailpit:
+    image: axllent/mailpit:v1.33.1
+    # Fake inbox: catches every email so nothing leaves your machine.
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # web UI
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    mem_limit: 64m
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:

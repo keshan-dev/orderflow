@@ -47,3 +47,14 @@ def test_log_context_is_removed_after_block():
         pass
     record = logging.LogRecord("t", logging.INFO, __file__, 1, "x", (), None)
     assert "order_id" not in json.loads(formatter.format(record))
+
+
+def test_access_log_skips_health_checks():
+    from orderflow_common.logging import _SkipHealthChecks
+
+    def record(msg):
+        return logging.LogRecord("uvicorn.access", logging.INFO, __file__, 1, msg, (), None)
+
+    quiet = _SkipHealthChecks()
+    assert not quiet.filter(record('127.0.0.1:1 - "GET /readyz HTTP/1.1" 200'))
+    assert quiet.filter(record('127.0.0.1:1 - "GET /api/products HTTP/1.1" 200'))

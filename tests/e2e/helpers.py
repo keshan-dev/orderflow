@@ -21,15 +21,15 @@ from confluent_kafka import Consumer, Producer
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPOSE_FILE = ROOT / "deploy" / "compose" / "docker-compose.yml"
-ORDER_API = "http://localhost:8080"  # through nginx
-INVENTORY_API = "http://localhost:8080"  # through nginx
-KAFKA = "localhost:29092"
+ORDER_API = "http://127.0.0.1:8080"  # through nginx
+INVENTORY_API = "http://127.0.0.1:8080"  # through nginx
+KAFKA = "127.0.0.1:29092"
 HTTP_TIMEOUT = 10  # the dev machine is near its memory limit; short stalls happen
 
 
 def stack_running() -> bool:
     try:
-        with socket.create_connection(("localhost", 8080), timeout=1):
+        with socket.create_connection(("127.0.0.1", 8080), timeout=1):
             return True
     except OSError:
         return False
@@ -145,7 +145,7 @@ def wait_for_status(order_id: str, *statuses: str, seconds: float = 60) -> dict[
 def db(name: str) -> psycopg.Connection:
     password = env_file()["POSTGRES_PASSWORD"]
     return psycopg.connect(
-        f"postgresql://postgres:{password}@localhost:15432/{name}", connect_timeout=5
+        f"postgresql://postgres:{password}@127.0.0.1:15432/{name}", connect_timeout=5
     )
 
 

@@ -17,12 +17,12 @@ from search_indexer.rebuild import rebuild
 MAPPING = (
     pathlib.Path(__file__).resolve().parents[3] / "deploy/compose/opensearch/orders-mapping.json"
 )
-KAFKA = "localhost:29092"
+KAFKA = "127.0.0.1:29092"
 
 
 def up(port: int) -> bool:
     try:
-        with socket.create_connection(("localhost", port), timeout=1):
+        with socket.create_connection(("127.0.0.1", port), timeout=1):
             return True
     except OSError:
         return False
@@ -49,7 +49,7 @@ def test_rebuild_fills_a_new_index_from_kafka_and_moves_the_alias():
     new = f"test-new-{suffix}"
     admin = AdminClient({"bootstrap.servers": KAFKA})
     admin.create_topics([NewTopic(topic, num_partitions=2, replication_factor=1)])[topic].result(10)
-    client = make_client("http://localhost:9200")
+    client = make_client("http://127.0.0.1:9200")
     client.indices.create(index=old, body=json.loads(MAPPING.read_text()))
     client.indices.put_alias(index=old, name=alias)
     try:

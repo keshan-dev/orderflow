@@ -1,4 +1,4 @@
-"""Uses the Compose OpenSearch (localhost:9200) with a throwaway index; skips when it is down."""
+"""Uses the Compose OpenSearch (127.0.0.1:9200) with a throwaway index; skips when it is down."""
 
 import json
 import pathlib
@@ -20,7 +20,7 @@ MAPPING = (
 
 def opensearch_running() -> bool:
     try:
-        with socket.create_connection(("localhost", 9200), timeout=1):
+        with socket.create_connection(("127.0.0.1", 9200), timeout=1):
             return True
     except OSError:
         return False
@@ -31,7 +31,7 @@ pytestmark = pytest.mark.skipif(not opensearch_running(), reason="Compose OpenSe
 
 @pytest.fixture
 def index():
-    client = OpenSearch(hosts=["http://localhost:9200"], timeout=30, max_retries=0)
+    client = OpenSearch(hosts=["http://127.0.0.1:9200"], timeout=30, max_retries=0)
     name = f"test-orders-{uuid.uuid4().hex[:8]}"
     client.indices.create(index=name, body=json.loads(MAPPING.read_text()))
     yield client, name

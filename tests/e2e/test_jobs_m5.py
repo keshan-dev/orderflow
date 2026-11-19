@@ -23,8 +23,8 @@ from helpers import (
 
 pytestmark = pytest.mark.skipif(not is_e2e_enabled(), reason="Compose stack is not running")
 
-MAILPIT = "http://localhost:8025/api/v1"
-RABBITMQ_API = "http://localhost:15672/api"
+MAILPIT = "http://127.0.0.1:8025/api/v1"
+RABBITMQ_API = "http://127.0.0.1:15672/api"
 
 
 def emails_to(address: str) -> int:
@@ -46,7 +46,7 @@ def invoice_exists(order_id: str) -> bool:
     env = env_file()
     s3 = boto3.client(
         "s3",
-        endpoint_url="http://localhost:7333",
+        endpoint_url="http://127.0.0.1:7333",
         region_name="us-east-1",
         aws_access_key_id=env["S3_ACCESS_KEY"],
         aws_secret_access_key=env["S3_SECRET_KEY"],

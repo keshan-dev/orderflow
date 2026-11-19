@@ -23,17 +23,19 @@ dc ps                        # every long-running container should be "healthy"
 
 | Address | What |
 |---|---|
-| `localhost:15432` | PostgreSQL (`orders_db`, `inventory_db`, `payments_db`; containers use `postgres:5432`) |
-| `localhost:6379` | Redis |
-| `localhost:29092` | Kafka (containers use `kafka:19092`) |
-| http://localhost:8083 | Kafka Connect (Debezium) REST API |
-| http://localhost:8085 | Kafka UI (`ui` profile) |
-| http://localhost:15672 | RabbitMQ management |
-| http://localhost:9200 | OpenSearch (no login, local only) |
-| http://localhost:5601 | OpenSearch Dashboards (`ui` profile) |
-| http://localhost:7333 | S3 API (SeaweedFS) |
-| http://localhost:7888/buckets/ | S3 file browser |
-| http://localhost:8025 | Mailpit inbox (fake email) |
+| `127.0.0.1:15432` | PostgreSQL (`orders_db`, `inventory_db`, `payments_db`; containers use `postgres:5432`) |
+| `127.0.0.1:6379` | Redis |
+| `127.0.0.1:29092` | Kafka (containers use `kafka:19092`) |
+| http://127.0.0.1:8083 | Kafka Connect (Debezium) REST API |
+| http://127.0.0.1:8085 | Kafka UI (`ui` profile) |
+| http://127.0.0.1:15672 | RabbitMQ management |
+| http://127.0.0.1:9200 | OpenSearch (no login, local only) |
+| http://127.0.0.1:5601 | OpenSearch Dashboards (`ui` profile) |
+| http://127.0.0.1:7333 | S3 API (SeaweedFS) |
+| http://127.0.0.1:7888/buckets/ | S3 file browser |
+| http://127.0.0.1:8025 | Mailpit inbox (fake email) |
+
+Use `127.0.0.1` rather than `localhost` from your machine: on Windows `localhost` can resolve to `::1`, where other programs (for example a WSL port relay) may answer instead of Docker.
 
 Some host ports differ from the usual defaults. Kafka (29092) and S3 (7333) move because Windows reserves the ranges 8295 to 8894 and 8995 to 9194 on the dev machine. PostgreSQL (15432) moves because a native PostgreSQL service already uses 5432. Check yours with `netsh int ipv4 show excludedportrange protocol=tcp`.
 

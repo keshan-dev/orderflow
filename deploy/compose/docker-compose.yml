@@ -430,6 +430,27 @@ services:
     mem_limit: 64m
     restart: "no"
 
+  search-indexer:
+    image: orderflow/search-indexer:dev
+    build:
+      context: ../..
+      dockerfile: services/search-indexer/Dockerfile
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      OPENSEARCH_URL: http://opensearch:9200
+    depends_on:
+      kafka:
+        condition: service_healthy
+      opensearch-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "orderflow_common.heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 128m
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:

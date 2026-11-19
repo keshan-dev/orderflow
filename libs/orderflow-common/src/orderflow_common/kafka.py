@@ -163,3 +163,107 @@ class EventConsumer:
 
 def _position(message: Message) -> tuple[str, int, int]:
     return (message.topic(), message.partition(), message.offset())
+
+
+BatchHandler = Callable[[list[Event]], None]
+
+
+class BatchEventConsumer:
+    """Like EventConsumer, but hands the handler up to batch_size events at once.
+
+    Used where 1 bulk write is much cheaper than many single writes (search-indexer).
+    Offsets are committed only after the whole batch succeeded. If the batch fails, every
+    partition is moved back to its first offset in the batch and the batch is read again,
+    so the handler must be idempotent for the whole batch.
+    """
+
+    def __init__(
+        self,
+        bootstrap_servers: str,
+        group_id: str,
+        topics: list[str],
+        handler: BatchHandler,
+        *,
+        batch_size: int = 200,
+        attempts: int = 3,
+        max_backoff_seconds: float = 30.0,
+    ) -> None:
+        self._config = consumer_config(bootstrap_servers, group_id)
+        self._group_id = group_id
+        self._topics = topics
+        self._handler = handler
+        self._batch_size = batch_size
+        self._attempts = attempts
+        self._max_backoff = max_backoff_seconds
+        self._wait = 1.0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name=f"consumer-{group_id}", daemon=True)
+        self._last_poll = 0.0
+
+    def start(self) -> None:
+        self._last_poll = time.monotonic()
+        self._thread.start()
+
+    def stop(self, timeout: float = 10.0) -> None:
+        self._stop.set()
+        self._thread.join(timeout)
+
+    @property
+    def healthy(self) -> bool:
+        return self._thread.is_alive() and time.monotonic() - self._last_poll < STALE_POLL_SECONDS
+
+    def _run(self) -> None:
+        consumer = Consumer(self._config)
+        consumer.subscribe(self._topics)
+        log.info("batch consumer started", extra={"group": self._group_id, "topics": self._topics})
+        try:
+            while not self._stop.is_set():
+                messages = consumer.consume(num_messages=self._batch_size, timeout=1.0)
+                self._last_poll = time.monotonic()
+                if messages:
+                    self._handle_batch(consumer, messages)
+        finally:
+            consumer.close()
+            log.info("batch consumer stopped", extra={"group": self._group_id})
+
+    def _handle_batch(self, consumer: Consumer, messages: list[Message]) -> None:
+        events: list[Event] = []
+        first_offsets: dict[tuple[str, int], int] = {}
+        for message in messages:
+            if message.error():
+                log.warning("kafka consume error", extra={"error": str(message.error())})
+                continue
+            first_offsets.setdefault((message.topic(), message.partition()), message.offset())
+            if message.value() is None:
+                continue
+            try:
+                events.append(parse_event(message))
+            except PermanentError:
+                where = {"topic": message.topic(), "offset": message.offset()}
+                log.error("skipping a message that is not a valid event", extra=where)
+
+        try:
+            if events:
+                retrying = retry(
+                    stop=stop_after_attempt(self._attempts),
+                    wait=wait_exponential(multiplier=0.2, max=2),
+                    reraise=True,
+                )
+                retrying(self._handler)(events)
+        except Exception:
+            log.error(
+                "batch failed; will read it again",
+                extra={"events": len(events), "retry_in_seconds": self._wait},
+                exc_info=True,
+            )
+            self._stop.wait(self._wait)
+            self._wait = min(self._wait * 2, self._max_backoff)
+            for (topic, partition), offset in first_offsets.items():
+                consumer.seek(TopicPartition(topic, partition, offset))
+            return
+
+        self._wait = 1.0
+        try:
+            consumer.commit(asynchronous=False)
+        except KafkaException:
+            log.warning("offset commit failed", exc_info=True)

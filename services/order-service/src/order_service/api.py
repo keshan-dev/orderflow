@@ -87,6 +87,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(422, "Idempotency-Key was already used for a different request")
         payload = {"order_id": str(result.order_id), "status": "PENDING"}
         store.finish(idempotency_key, fingerprint, 202, payload)
+        log.info(
+            "order accepted" if result.created else "order request repeated",
+            extra={"order_id": payload["order_id"], "items": len(new_order.items)},
+        )
         return _order_response(202, payload, replayed=not result.created)
 
     @app.get("/api/orders/{order_id}")

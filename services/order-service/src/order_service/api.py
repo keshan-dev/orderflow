@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from order_service.config import Settings
 from order_service.idempotency import Begin, IdempotencyStore
-from order_service.orders import NewOrder, create_order
+from order_service.orders import NewOrder, create_order, get_order
 from orderflow_common.connections import make_engine, make_redis, postgres_ok, redis_ok
 from orderflow_common.logging import configure_logging
 
@@ -88,6 +88,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload = {"order_id": str(result.order_id), "status": "PENDING"}
         store.finish(idempotency_key, fingerprint, 202, payload)
         return _order_response(202, payload, replayed=not result.created)
+
+    @app.get("/api/orders/{order_id}")
+    def read_order(order_id: uuid.UUID) -> dict[str, Any]:
+        order = get_order(app.state.engine, order_id)
+        if order is None:
+            raise HTTPException(404, "order not found")
+        return order
 
     @app.get("/readyz")
     def readyz(response: Response) -> dict[str, bool]:

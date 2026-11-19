@@ -42,3 +42,16 @@ def test_post_order_returns_202_and_location(client):
 def test_invalid_body_is_rejected(client, body):
     response = client.post("/api/orders", json=body, headers={"Idempotency-Key": "k-2"})
     assert response.status_code == 422
+
+
+def test_get_order_returns_the_snapshot(client):
+    body = order_body(quantity=3)
+    created = client.post("/api/orders", json=body, headers={"Idempotency-Key": "k-3"}).json()
+    order = client.get(f"/api/orders/{created['order_id']}").json()
+    assert order["status"] == "PENDING"
+    assert order["items"][0]["quantity"] == 3
+    assert order["total_cents"] is None  # known only after inventory reserves the stock
+
+
+def test_unknown_order_returns_404(client):
+    assert client.get(f"/api/orders/{uuid.uuid4()}").status_code == 404

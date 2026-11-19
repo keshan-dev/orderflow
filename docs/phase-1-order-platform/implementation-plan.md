@@ -189,6 +189,9 @@ PAYMENT_DELAY_MS=<more than the timeout> dc up -d payment-service   # timeout pa
 
 - [ ] After a failed payment, the stock in both Postgres and Redis is the same as before the order.
 - [ ] Publishing `ChargePaymentRequested` 2 times creates 1 payment.
+- [ ] A payment that arrives after the order timed out is refunded.
+
+All of these are automated in `tests/e2e/test_saga_m4.py`.
 
 **Done when.** Both outcomes work end to end, and no order ever stays in `STOCK_RESERVED` forever.
 

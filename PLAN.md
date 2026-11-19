@@ -10,7 +10,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M3 done) |
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M4 done) |
 | 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
 | 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
 | 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |
@@ -40,3 +40,5 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 | 2026-11-19 | Keshan | payment-service uses `franz-go` as its Kafka client | Pure Go: no C compiler or librdkafka needed on Windows, and a small static binary |
 | 2026-11-19 | Keshan | payment-service uses `goose` for migrations, with the SQL files embedded in the binary | 1 binary can migrate and serve; plain SQL files are easy to review |
 | 2026-11-19 | Keshan | The fake provider is called outside the database transaction, with order_id as its idempotency key | A slow provider never holds a database transaction open; a retry after a crash gets the same answer instead of a second charge |
+| 2026-11-19 | Keshan | When every provider call for a charge times out, the charge is recorded as FAILED (`provider_timeout`) | The fake provider never charges after a missed deadline, so this is safe here; a real provider needs a status query before giving up (noted in the code) |
+| 2026-11-19 | Keshan | payment-service image is a static binary on distroless with a `healthcheck` subcommand | No shell or package manager in the image; 28 MB and about 4 MB of RAM |

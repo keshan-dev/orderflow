@@ -19,10 +19,27 @@ set -a; . deploy/compose/.env; set +a
 
 log() { echo "$(date -u +%H:%M:%S) $*"; }
 
+# Without the outbox connectors no event leaves the database and every order stays
+# PENDING, so the rounds would only measure a broken setup.
+check_connectors() {
+  for file in deploy/compose/debezium/connectors/*.json; do
+    name=$(basename "$file" .json)
+    states=$(curl -s --max-time 10 "http://127.0.0.1:8083/connectors/$name/status" \
+      | grep -o '"state":"[A-Z_]*"' | sort -u || true)
+    if [ "$states" != '"state":"RUNNING"' ]; then
+      log "connector $name is not RUNNING (${states:-not registered}); run: docker compose -f deploy/compose/docker-compose.yml up debezium-init"
+      exit 1
+    fi
+  done
+  log "all outbox connectors are RUNNING"
+}
+
 orders_in_progress() {
   docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" orderflow-postgres-1 psql -U postgres -d orders_db \
     -tAc "SELECT count(*) FROM orders WHERE status IN ('PENDING', 'STOCK_RESERVED')"
 }
+
+check_connectors
 
 log "payment-service: decline ${FAILURE_RATE} of charges during the rounds"
 PAYMENT_FAILURE_RATE="$FAILURE_RATE" "${COMPOSE[@]}" up -d --no-deps --force-recreate payment-service >/dev/null

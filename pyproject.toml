@@ -5,6 +5,7 @@
 members = [
     "libs/orderflow-common",
     "services/inventory-service",
+    "services/order-service",
 ]
 
 [dependency-groups]

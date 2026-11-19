@@ -75,6 +75,7 @@ class EventConsumer:
         self._last_poll = 0.0
 
     def start(self) -> None:
+        self._last_poll = time.monotonic()  # healthy from the start, until polling stalls
         self._thread.start()
 
     def stop(self, timeout: float = 10.0) -> None:

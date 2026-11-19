@@ -318,6 +318,23 @@ services:
     mem_limit: 192m
     restart: unless-stopped
 
+  debezium-init:
+    image: quay.io/debezium/connect:3.7.1.Final
+    # 1-shot: registers the outbox connectors once Kafka Connect and the outbox tables exist.
+    entrypoint: ["/bin/sh", "/scripts/register-connectors.sh"]
+    volumes:
+      - ./debezium/register-connectors.sh:/scripts/register-connectors.sh:ro
+      - ./debezium/connectors:/connectors:ro
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+      order-migrate:
+        condition: service_completed_successfully
+      inventory-migrate:
+        condition: service_completed_successfully
+    mem_limit: 128m
+    restart: "no"
+
 volumes:
   postgres-data:
   redis-data:

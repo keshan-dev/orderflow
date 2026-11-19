@@ -44,13 +44,31 @@ def env_file() -> dict[str, str]:
     return values
 
 
-def compose(*args: str) -> None:
+def compose(*args: str, env: dict[str, str] | None = None) -> None:
     subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE_FILE), *args],
         check=True,
         capture_output=True,
         timeout=180,
+        env={**os.environ, **(env or {})},
     )
+
+
+def recreate(service: str, **env: str) -> None:
+    """Restart 1 service with different settings and wait until it is healthy."""
+    compose("up", "-d", "--no-deps", "--force-recreate", service, env=env)
+    container = f"orderflow-{service}-1"
+
+    def healthy() -> bool:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Health.Status}}", container],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.stdout.strip() == "healthy"
+
+    wait_until(healthy, 120, f"{service} healthy")
 
 
 def http(method: str, url: str, body: Any = None, headers: dict | None = None) -> tuple[int, Any]:

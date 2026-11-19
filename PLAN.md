@@ -10,7 +10,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 and M1 done) |
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M3 done) |
 | 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
 | 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
 | 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |
@@ -36,3 +36,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 | 2026-11-19 | Keshan | `reservations` has 1 row per order (items as JSONB) | Reserve, release, commit and the sweeper each change 1 row under 1 lock |
 | 2026-11-19 | Keshan | inventory-service also handles `OrderConfirmed`: the hold becomes `COMMITTED` | Without it, the sweeper would give back stock for orders that were already paid |
 | 2026-11-19 | Keshan | order-service sends `RefundPaymentRequested` when a payment succeeds for an order that is already cancelled or cancelling | A payment that arrives after the order timed out must be refunded, not kept |
+| 2026-11-19 | Keshan | Kafka integration tests reuse the Compose broker (localhost:29092) instead of a Testcontainers broker, and skip when it is not running | A second Kafka broker does not fit in the RAM available |
+| 2026-11-19 | Keshan | payment-service uses `franz-go` as its Kafka client | Pure Go: no C compiler or librdkafka needed on Windows, and a small static binary |
+| 2026-11-19 | Keshan | payment-service uses `goose` for migrations, with the SQL files embedded in the binary | 1 binary can migrate and serve; plain SQL files are easy to review |
+| 2026-11-19 | Keshan | The fake provider is called outside the database transaction, with order_id as its idempotency key | A slow provider never holds a database transaction open; a retry after a crash gets the same answer instead of a second charge |

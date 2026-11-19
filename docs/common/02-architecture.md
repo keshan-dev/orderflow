@@ -172,7 +172,9 @@ PostgreSQL is the source of truth. Redis is fast but can be rebuilt from Postgre
 
 ## 10. Search (OpenSearch)
 
-- Index `orders-v1`, reached through the alias `orders`. The app always uses the alias, so you can reindex into `orders-v2` and switch the alias with zero downtime.
+- Index `orders-v1`, reached through the alias `orders`. The app always uses the alias, so you can reindex into `orders-v2` and switch the alias with zero downtime (`deploy/compose/opensearch/reindex.sh`).
+- search-indexer writes each document with the event time as an `external_gte` version, so a late or repeated event never overwrites newer data.
+- The whole index can be rebuilt from Kafka alone (`python -m search_indexer.rebuild <new-index>`), because `orders.events`, `inventory.events` and `payments.events` keep every event (`retention.ms=-1`).
 - Phase 4 adds 1 index per day named `security-events-YYYY.MM.DD`. An ISM policy deletes each index after 7 days.
 
 ## 11. Files (S3, MinIO locally)

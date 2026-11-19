@@ -246,11 +246,12 @@ Both are automated in `tests/e2e/test_jobs_m5.py`.
 
 ```bash
 curl -s 'localhost:8080/api/orders/search?q=<product name>'
-./deploy/compose/opensearch/reindex-v2.sh
+sh deploy/compose/opensearch/reindex.sh orders-v1 orders-v2 deploy/compose/opensearch/orders-mapping-v2.json
 curl -s localhost:9200/_alias/orders   # points to orders-v2
+dc exec search-indexer python -m search_indexer.rebuild orders-v3   # rebuild from Kafka alone
 ```
 
-- [ ] Run k6 search requests during the reindex. No request fails.
+- [ ] Run k6 search requests during the reindex (`loadtest/phase1-search.js`). No request fails. Measured result: [results/phase-1](../../results/phase-1/README.md).
 - [ ] Delete the index, run the rebuild script, and get the same search results as before.
 
 **Done when.** Search works, a reindex causes 0 failed requests, and the index can be rebuilt from Kafka alone.

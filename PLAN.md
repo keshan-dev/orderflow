@@ -10,7 +10,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M5 done) |
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M6 done) |
 | 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
 | 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
 | 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |
@@ -43,3 +43,6 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 | 2026-11-19 | Keshan | When every provider call for a charge times out, the charge is recorded as FAILED (`provider_timeout`) | The fake provider never charges after a missed deadline, so this is safe here; a real provider needs a status query before giving up (noted in the code) |
 | 2026-11-19 | Keshan | payment-service image is a static binary on distroless with a `healthcheck` subcommand | No shell or package manager in the image; 28 MB and about 4 MB of RAM |
 | 2026-11-19 | Keshan | RabbitMQ code uses pika `BlockingConnection`, with pika pinned below 2.0 | It gives synchronous publisher confirms (publish returns only after the broker stored the job). pika 1.5 marks it deprecated in favour of a thread-safe `Connection` with callback-based confirms; moving to it is a known follow-up before pika 2.0 |
+| 2026-11-19 | Keshan | search-indexer uses a batch consumer and the Bulk API, with the event time as an `external_gte` document version | 1 bulk request per batch instead of 1 per event; versions make retries, late events and overlapping reindex or rebuild runs safe |
+| 2026-11-19 | Keshan | The 3 main event topics keep every event (`retention.ms=-1`) | Read models such as the search index can always be rebuilt from Kafka alone; disk use only grows, acceptable for local learning |
+| 2026-11-19 | Keshan | `orders-v2` mapping uses the english analyzer for product names | Shows why a reindex is needed: an analyzer cannot change on an existing index. A search for "lamps" went from 0 to 3 results |

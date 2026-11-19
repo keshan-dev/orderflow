@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const hostPort = "localhost:15432"
+const hostPort = "127.0.0.1:15432"
 
 // New creates an empty database, drops it when the test ends, and returns its URL.
 func New(t *testing.T) string {

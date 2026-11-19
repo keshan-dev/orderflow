@@ -15,7 +15,7 @@ import (
 	"github.com/keshan-dev/orderflow/services/payment-service/internal/events"
 )
 
-const broker = "localhost:29092"
+const broker = "127.0.0.1:29092"
 
 // throwawayTopic creates <name>, <name>.retry and <name>.dlq on the Compose broker.
 func throwawayTopic(t *testing.T) string {

@@ -16,7 +16,7 @@ MAPPING = (
 
 def opensearch_running() -> bool:
     try:
-        with socket.create_connection(("localhost", 9200), timeout=1):
+        with socket.create_connection(("127.0.0.1", 9200), timeout=1):
             return True
     except OSError:
         return False
@@ -39,7 +39,7 @@ def test_search_finds_orders_by_product_name_and_status(engine, redis_client, ap
 
     # Admin calls use a patient client: the app client gives up after 3 seconds and retries,
     # which can turn 1 slow "create index" into "index already exists".
-    search = OpenSearch(hosts=["http://localhost:9200"], timeout=30, max_retries=0)
+    search = OpenSearch(hosts=["http://127.0.0.1:9200"], timeout=30, max_retries=0)
     index = f"test-orders-{uuid.uuid4().hex[:8]}"
     search.indices.create(index=index, body=json.loads(MAPPING.read_text()))
     try:
@@ -56,7 +56,7 @@ def test_search_finds_orders_by_product_name_and_status(engine, redis_client, ap
         }
         search.index(index=index, id=order_id, body=document, params={"refresh": "true"})
         settings = dataclasses.replace(
-            app_settings, opensearch_url="http://localhost:9200", search_index=index
+            app_settings, opensearch_url="http://127.0.0.1:9200", search_index=index
         )
         with TestClient(create_app(settings)) as client:
             by_name = client.get("/api/orders/search", params={"q": "desk lamp"}).json()

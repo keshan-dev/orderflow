@@ -1,4 +1,4 @@
-"""Integration tests against the local Compose Kafka (localhost:29092).
+"""Integration tests against the local Compose Kafka (127.0.0.1:29092).
 
 Kafka needs a lot of memory, so these tests reuse the Compose broker instead of starting
 another one. They are skipped when that broker is not running.
@@ -17,12 +17,12 @@ from confluent_kafka.admin import AdminClient, NewTopic
 from orderflow_common.events import Event
 from orderflow_common.kafka import EventConsumer
 
-BOOTSTRAP = "localhost:29092"
+BOOTSTRAP = "127.0.0.1:29092"
 
 
 def kafka_running() -> bool:
     try:
-        with socket.create_connection(("localhost", 29092), timeout=1):
+        with socket.create_connection(("127.0.0.1", 29092), timeout=1):
             return True
     except OSError:
         return False

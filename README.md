@@ -23,7 +23,7 @@ dc ps                        # every long-running container should be "healthy"
 
 | Address | What |
 |---|---|
-| `localhost:5432` | PostgreSQL (`orders_db`, `inventory_db`, `payments_db`) |
+| `localhost:15432` | PostgreSQL (`orders_db`, `inventory_db`, `payments_db`; containers use `postgres:5432`) |
 | `localhost:6379` | Redis |
 | `localhost:29092` | Kafka (containers use `kafka:19092`) |
 | http://localhost:8083 | Kafka Connect (Debezium) REST API |
@@ -35,7 +35,7 @@ dc ps                        # every long-running container should be "healthy"
 | http://localhost:7888/buckets/ | S3 file browser |
 | http://localhost:8025 | Mailpit inbox (fake email) |
 
-Some host ports differ from the usual defaults (Kafka 29092, S3 7333) because Windows reserves the ranges 8295 to 8894 and 8995 to 9194 on the dev machine. Check yours with `netsh int ipv4 show excludedportrange protocol=tcp`.
+Some host ports differ from the usual defaults. Kafka (29092) and S3 (7333) move because Windows reserves the ranges 8295 to 8894 and 8995 to 9194 on the dev machine. PostgreSQL (15432) moves because a native PostgreSQL service already uses 5432. Check yours with `netsh int ipv4 show excludedportrange protocol=tcp`.
 
 ## Reset everything
 

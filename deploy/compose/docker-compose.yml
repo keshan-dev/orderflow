@@ -26,7 +26,8 @@ services:
       PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD:?set PAYMENTS_DB_PASSWORD in .env}
       CDC_DB_PASSWORD: ${CDC_DB_PASSWORD:?set CDC_DB_PASSWORD in .env}
     ports:
-      - "5432:5432"
+      # Host port 15432: a native PostgreSQL service already uses 5432 on the dev machine.
+      - "15432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro

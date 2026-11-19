@@ -688,6 +688,7 @@ source = { editable = "services/order-service" }
 dependencies = [
     { name = "alembic" },
     { name = "fastapi" },
+    { name = "opensearch-py" },
     { name = "orderflow-common" },
     { name = "uvicorn" },
 ]
@@ -696,6 +697,7 @@ dependencies = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.16" },
     { name = "fastapi", specifier = ">=0.120" },
+    { name = "opensearch-py", specifier = ">=3.0" },
     { name = "orderflow-common", editable = "libs/orderflow-common" },
     { name = "uvicorn", specifier = ">=0.38" },
 ]

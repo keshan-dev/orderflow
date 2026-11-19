@@ -8,6 +8,7 @@ members = [
     "services/order-service",
     "services/notification-worker",
     "services/search-indexer",
+    "services/reconcile",
 ]
 
 [dependency-groups]

@@ -1,0 +1,32 @@
+# OrderFlow Plan
+
+OrderFlow is a personal hands-on project to build real experience with the stack used by modern backend and platform teams. Full docs are in [`docs/`](docs/README.md).
+
+## Goal
+
+Build, deploy, observe, secure and run on AWS a small event-driven ordering system, so every tool in the target stack has been used for a real purpose.
+
+## Phases
+
+| Phase | Name | Status |
+|---|---|---|
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | Not started |
+| 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
+| 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
+| 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |
+| 5 | [AWS with Terraform](docs/phase-5-aws-terraform/README.md) | Not started, needs a written AWS budget first |
+
+## Decision log
+
+| Date | Who | Decision | Why |
+|---|---|---|---|
+| 2026-11-18 | Keshan | Build 5 phases in this order: order platform, GitOps and observability, operator, eBPF agent, AWS | Each phase needs the one before it: the app first, then Kubernetes, then extending Kubernetes, then the kernel, then the cloud |
+| 2026-11-18 | Keshan | Working name "OrderFlow", 1 repository for all phases | All phases, docs and history stay in 1 place |
+| 2026-11-18 | Keshan | Python for services, Go for payment-service, operator and eBPF agent | Python is the main backend language. Go is needed for the operator and eBPF phases. |
+| 2026-11-18 | Keshan | Everything runs locally until Phase 5 | No spend without a written budget (spend rule in docs/common/08-cost-and-safety.md) |
+| 2026-11-19 | Keshan | Conventional Commits for every commit, checked by a commit-msg hook | Readable history, and a clear record of what changed and why |
+| 2026-11-19 | Keshan | No AI attribution in commits, pull requests, code comments or docs | The author is responsible for every line |
+| 2026-11-19 | Keshan | Repository hosted at github.com/keshan-dev/orderflow (personal account) | Personal skills project |
+| 2026-11-19 | Keshan | Docker has about 3.9 GB of RAM on the dev machine (7.7 GB host). Every container gets a memory limit and small Java heaps; Kafka UI and OpenSearch Dashboards run only with the `ui` Compose profile | The full stack must fit in the RAM available |
+| 2026-11-19 | Keshan | SeaweedFS as the local S3 store instead of MinIO | MinIO no longer publishes community images; the app only uses the S3 API, so any S3-compatible store works |
+| 2026-11-19 | Keshan | Shared Python code lives in `libs/orderflow-common` | Settings, logging, the event envelope and the Kafka consumer are needed by 4 services; 1 copy avoids drift |

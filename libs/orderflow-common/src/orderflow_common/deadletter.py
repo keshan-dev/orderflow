@@ -86,6 +86,12 @@ class DeadLetterPublisher:
     ) -> None:
         self._send(original_topic + DLQ_SUFFIX, original_topic, message, group, attempt, error, 0)
 
+    def replay(self, original_topic: str, message: Message, group: str) -> None:
+        """Send a dead letter back through the retry topic, due now, starting again at 0."""
+        self._send(
+            original_topic + RETRY_SUFFIX, original_topic, message, group, 0, "replayed", now_ms()
+        )
+
     def _send(
         self,
         topic: str,

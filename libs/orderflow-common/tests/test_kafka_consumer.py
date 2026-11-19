@@ -224,3 +224,21 @@ def test_batch_consumer_gets_many_events_at_once_and_retries_failed_batches(topi
     consumer.start()
     wait_for(lambda: again == ["NEW"])
     consumer.stop()
+
+
+def test_replay_sends_a_groups_dead_letters_back_through_the_retry_topic(topic):
+    from orderflow_common.deadletter import DeadLetterPublisher
+    from orderflow_common.replay_kafka_dlq import replay
+
+    produce(topic, event_bytes("A"), event_bytes("B"))
+    first, second = read_all(topic)
+    publisher = DeadLetterPublisher(BOOTSTRAP)
+    publisher.to_dlq(topic, first, "group-x", 5, "boom")
+    publisher.to_dlq(topic, second, "group-y", 5, "boom")
+
+    assert replay(BOOTSTRAP, topic, "group-x") == 1
+    assert replay(BOOTSTRAP, topic, "group-x") == 0  # replayed once only
+    [retried] = read_all(f"{topic}.retry")
+    assert headers_of(retried)["x-consumer-group"] == "group-x"
+    assert headers_of(retried)["x-attempt"] == "0"
+    assert replay(BOOTSTRAP, topic, "group-y") == 1  # not skipped by group-x's run

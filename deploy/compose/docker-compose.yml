@@ -100,6 +100,54 @@ services:
     mem_limit: 256m
     restart: "no"
 
+  kafka-connect:
+    image: quay.io/debezium/connect:3.7.1.Final
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:19092
+      GROUP_ID: orderflow-connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      # Connector configs read the cdc password from env at runtime, so it is never stored in Kafka.
+      CONNECT_CONFIG_PROVIDERS: env
+      CONNECT_CONFIG_PROVIDERS_ENV_CLASS: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+      CDC_DB_PASSWORD: ${CDC_DB_PASSWORD:?set CDC_DB_PASSWORD in .env}
+      HEAP_OPTS: -Xms256m -Xmx384m
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://localhost:8083/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    mem_limit: 896m
+    restart: unless-stopped
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.0
+    # Optional browser UI. Start it with:  --profile ui
+    profiles: ["ui"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: orderflow
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: debezium
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
+      DYNAMIC_CONFIG_ENABLED: "false"
+      JAVA_OPTS: -Xmx256m
+    ports:
+      - "8085:8080"
+    mem_limit: 448m
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:

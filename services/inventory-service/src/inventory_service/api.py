@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from inventory_service.catalog import list_products
 from inventory_service.config import Settings
+from inventory_service.handlers import InventoryEventHandler
 from inventory_service.reservations import Reservations
 from inventory_service.stock import (
     InvalidItemsError,
@@ -26,6 +27,7 @@ from orderflow_common.connections import (
     redis_ok,
     retry_transient,
 )
+from orderflow_common.kafka import EventConsumer
 from orderflow_common.logging import configure_logging
 
 log = logging.getLogger(__name__)
@@ -64,8 +66,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         sweeper = Sweeper(app.state.reservations, cfg.sweeper_interval_seconds)
         sweeper.start()
+        app.state.consumer = EventConsumer(
+            cfg.kafka_bootstrap_servers,
+            "inventory-service",
+            ["orders.events"],
+            InventoryEventHandler(app.state.reservations),
+        )
+        app.state.consumer.start()
         log.info("inventory-service started")
         yield
+        app.state.consumer.stop()
         sweeper.stop()
         app.state.redis.close()
         app.state.engine.dispose()
@@ -112,6 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if all(checks.values()) and not app.state.stock_loaded:
             app.state.stock_loaded = _try_load_stock(app)
         checks["stock_loaded"] = app.state.stock_loaded
+        checks["consumer"] = app.state.consumer.healthy
         if not all(checks.values()):
             response.status_code = 503
         return checks

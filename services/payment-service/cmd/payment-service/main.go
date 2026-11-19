@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -32,6 +33,10 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// "payment-service healthcheck" is the container health check (the image has no shell).
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		return healthcheck(ctx)
+	}
 	// "payment-service migrate" applies migrations and exits (used by payment-migrate).
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		url := os.Getenv("DATABASE_URL")
@@ -73,6 +78,24 @@ func run() error {
 	stop()
 	<-consumerDone
 	return err
+}
+
+func healthcheck(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost:8003/readyz", nil)
+	if err != nil {
+		return err
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("not ready: %s", response.Status)
+	}
+	return nil
 }
 
 // serve runs the HTTP server until ctx is cancelled, then shuts it down gracefully.

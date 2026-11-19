@@ -147,5 +147,3 @@ You are ready to talk about a phase when you can do all of these without notes.
 - Explain why only the ALB is public and how traffic reaches the database.
 - Show a WAF rule blocking a test request.
 - Explain what it cost, and how you made sure nothing was left running.
-
-The [interview readiness guide](../interview-readiness.html) has realistic questions for each phase.

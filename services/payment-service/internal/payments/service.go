@@ -46,6 +46,8 @@ func (s *Service) Handle(ctx context.Context, e events.Envelope) error {
 	switch e.EventType {
 	case "ChargePaymentRequested":
 		return s.charge(ctx, e)
+	case "RefundPaymentRequested":
+		return s.refund(ctx, e)
 	default:
 		return nil
 	}
@@ -77,6 +79,56 @@ func (s *Service) charge(ctx context.Context, e events.Envelope) error {
 		return s.recordFailure(ctx, e, amount, result.Reason)
 	}
 	return s.recordSuccess(ctx, e, amount, result.Ref)
+}
+
+// refund gives back a successful charge, for example when the payment arrived after the
+// order had already been cancelled. Safe to call many times.
+func (s *Service) refund(ctx context.Context, e events.Envelope) error {
+	log := slog.With("order_id", e.OrderID, "event_id", e.EventID)
+	if done, err := events.AlreadyProcessed(ctx, s.pool, e.EventID); err != nil || done {
+		return err
+	}
+	existing, err := s.successfulPayment(ctx, e.OrderID)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		log.Info("refund requested but the order was never charged")
+		return s.inTx(ctx, e, func(pgx.Tx) error { return nil })
+	}
+	if existing.Status == "SUCCEEDED" {
+		if err := s.refundWithRetries(ctx, existing.ProviderRef); err != nil {
+			return err // provider unreachable: the event is read again later
+		}
+	}
+	return s.inTx(ctx, e, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx,
+			`UPDATE payments SET status = 'REFUNDED', updated_at = now()
+			 WHERE id = $1 AND status = 'SUCCEEDED'`, existing.ID)
+		if err != nil {
+			return err
+		}
+		log.Info("payment refunded", "amount_cents", existing.AmountCents)
+		refunded := events.New("PaymentRefunded", e.OrderID, map[string]any{
+			"payment_id":   existing.ID,
+			"amount_cents": existing.AmountCents,
+		})
+		return events.WriteOutbox(ctx, tx, refunded)
+	})
+}
+
+func (s *Service) refundWithRetries(ctx context.Context, chargeRef string) error {
+	var err error
+	for attempt := 1; attempt <= s.attempts; attempt++ {
+		callCtx, cancel := context.WithTimeout(ctx, s.timeout)
+		err = s.provider.Refund(callCtx, chargeRef)
+		cancel()
+		if err == nil || ctx.Err() != nil {
+			return err
+		}
+		slog.Warn("refund call failed", "attempt", attempt, "error", err)
+	}
+	return fmt.Errorf("refund failed after %d attempts: %w", s.attempts, err)
 }
 
 // chargeWithRetries calls the provider with a deadline per call and a limited number of

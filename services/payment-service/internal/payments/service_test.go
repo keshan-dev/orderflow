@@ -131,3 +131,46 @@ func TestMissingAmountFailsThePayment(t *testing.T) {
 		t.Fatalf("outbox = %v", got)
 	}
 }
+
+func refundRequest(orderID string) events.Envelope {
+	return events.New("RefundPaymentRequested", orderID, map[string]any{})
+}
+
+func TestRefundMarksThePaymentRefundedOnce(t *testing.T) {
+	svc, pool := newService(t, provider.NewFake(0, 0), time.Second)
+	orderID := uuid.NewString()
+	_ = svc.Handle(context.Background(), chargeRequest(orderID, 500))
+	request := refundRequest(orderID)
+	for range 2 {
+		if err := svc.Handle(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if countPayments(t, pool, "REFUNDED") != 1 || countPayments(t, pool, "SUCCEEDED") != 0 {
+		t.Fatal("want exactly 1 refunded payment")
+	}
+	if got := outboxTypes(t, pool); len(got) != 2 || got[1] != "PaymentRefunded" {
+		t.Fatalf("outbox = %v", got)
+	}
+}
+
+func TestRefundForAnOrderNeverChargedDoesNothing(t *testing.T) {
+	svc, pool := newService(t, provider.NewFake(0, 0), time.Second)
+	if err := svc.Handle(context.Background(), refundRequest(uuid.NewString())); err != nil {
+		t.Fatal(err)
+	}
+	if got := outboxTypes(t, pool); len(got) != 0 {
+		t.Fatalf("nothing to refund, but outbox = %v", got)
+	}
+}
+
+func TestChargeAfterRefundDoesNotChargeAgain(t *testing.T) {
+	svc, pool := newService(t, provider.NewFake(0, 0), time.Second)
+	orderID := uuid.NewString()
+	_ = svc.Handle(context.Background(), chargeRequest(orderID, 500))
+	_ = svc.Handle(context.Background(), refundRequest(orderID))
+	_ = svc.Handle(context.Background(), chargeRequest(orderID, 500))
+	if countPayments(t, pool, "SUCCEEDED") != 0 || countPayments(t, pool, "REFUNDED") != 1 {
+		t.Fatal("a refunded order must never be charged again")
+	}
+}

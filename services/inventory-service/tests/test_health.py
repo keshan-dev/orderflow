@@ -18,4 +18,12 @@ def test_readyz_is_503_when_dependencies_are_down():
     with TestClient(create_app(UNREACHABLE)) as client:
         response = client.get("/readyz")
     assert response.status_code == 503
-    assert response.json() == {"postgres": False, "redis": False}
+    assert response.json() == {"postgres": False, "redis": False, "stock_loaded": False}
+
+
+def test_readyz_is_200_with_real_dependencies(database_url, redis_url):
+    settings = Settings(database_url=database_url, redis_url=redis_url)
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/readyz")
+    assert response.status_code == 200
+    assert response.json() == {"postgres": True, "redis": True, "stock_loaded": True}

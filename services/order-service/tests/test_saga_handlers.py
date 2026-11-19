@@ -97,3 +97,29 @@ def test_late_payment_after_cancellation_is_refunded(handler, engine, order_id):
     handler(payment_succeeded(order_id))  # arrives late
     assert get_order(engine, order_id)["status"] == "STOCK_RESERVED"  # never CONFIRMED
     assert events_after_order_created(engine)[-1].event_type == "RefundPaymentRequested"
+
+
+def test_stock_released_cancels_after_payment_failed(handler, engine, order_id):
+    handler(stock_reserved(order_id))
+    handler(Event("PaymentFailed", order_id, {"reason": "card_declined"}))
+    handler(Event("StockReleased", order_id, {"reason": "requested"}))
+    order = get_order(engine, order_id)
+    assert (order["status"], order["cancel_reason"]) == (
+        "CANCELLED",
+        "payment_failed:card_declined",
+    )
+    assert events_after_order_created(engine)[-1].event_type == "OrderCancelled"
+
+
+def test_expired_hold_cancels_an_order_still_waiting(handler, engine, order_id):
+    handler(stock_reserved(order_id))
+    handler(Event("StockReleased", order_id, {"reason": "expired"}))
+    order = get_order(engine, order_id)
+    assert (order["status"], order["cancel_reason"]) == ("CANCELLED", "stock_expired")
+
+
+def test_stock_released_never_cancels_a_confirmed_order(handler, engine, order_id):
+    handler(stock_reserved(order_id))
+    handler(payment_succeeded(order_id))
+    handler(Event("StockReleased", order_id, {"reason": "expired"}))
+    assert get_order(engine, order_id)["status"] == "CONFIRMED"

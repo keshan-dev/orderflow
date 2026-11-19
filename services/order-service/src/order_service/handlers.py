@@ -8,7 +8,7 @@ import logging
 import uuid
 from collections.abc import Callable
 
-from sqlalchemy import Connection, Engine, func, update
+from sqlalchemy import Connection, Engine, func, select, update
 
 from order_service.orders import AGGREGATE, order_payload
 from order_service.saga import CANCELLED, CONFIRMED, PENDING, STOCK_RESERVED, move
@@ -26,6 +26,7 @@ class SagaHandler:
             "StockRejected": self._stock_rejected,
             "PaymentSucceeded": self._payment_succeeded,
             "PaymentFailed": self._payment_failed,
+            "StockReleased": self._stock_released,
         }
 
     def __call__(self, event: Event) -> None:
@@ -90,6 +91,19 @@ class SagaHandler:
             return
         _write_order_event(conn, "ReleaseStockRequested", event.order_id)
         log.info("payment failed; stock release requested", extra={"reason": reason})
+
+    def _stock_released(self, conn: Connection, event: Event) -> None:
+        # Usually cancel_reason is already set (payment failed or timed out). If the hold
+        # simply expired first, record that as the reason.
+        reason = conn.execute(
+            select(orders.c.cancel_reason).where(orders.c.id == event.order_id)
+        ).scalar()
+        new_reason = reason or f"stock_{event.payload.get('reason', 'released')}"
+        if not move(conn, event.order_id, STOCK_RESERVED, CANCELLED, cancel_reason=new_reason):
+            log.info("stock released ignored: order is not waiting for payment")
+            return
+        _write_order_event(conn, "OrderCancelled", event.order_id)
+        log.info("order cancelled after stock release", extra={"reason": new_reason})
 
 
 def start_cancelling(conn: Connection, order_id: uuid.UUID, reason: str) -> bool:

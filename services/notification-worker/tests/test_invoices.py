@@ -42,3 +42,10 @@ def test_invoice_job_stores_the_pdf_under_its_key():
 def test_job_without_an_order_is_permanent():
     with pytest.raises(PermanentJobError):
         InvoiceJob(FakeStore())({"job_id": "j", "payload": {}})
+
+
+def test_existing_invoice_is_not_written_again():
+    store = FakeStore()
+    store.objects[invoice_key(ORDER)] = b"%PDF-original"
+    InvoiceJob(store)({"job_id": "j", "payload": {"order": ORDER}})
+    assert store.objects[invoice_key(ORDER)] == b"%PDF-original"

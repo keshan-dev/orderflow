@@ -1,7 +1,10 @@
 import pytest
 
-from notification_worker.receipts import EmailJob, receipt
+from notification_worker.dedupe import EmailDedupe
+from notification_worker.receipts import EmailBusyError, EmailJob, receipt
 from notification_worker.worker import PermanentJobError
+from orderflow_common import testing
+from orderflow_common.connections import make_redis
 
 ORDER = {
     "order_id": "1df1af1b-236d-44b6-931b-8be8da28df2d",
@@ -28,14 +31,58 @@ def test_receipt_lists_items_and_total():
     assert "Total: 189.97" in body
 
 
-def test_email_job_sends_to_the_customer():
+@pytest.fixture(scope="module")
+def redis_url():
+    with testing.redis_container() as url:
+        yield url
+
+
+@pytest.fixture
+def dedupe(redis_url):
+    client = make_redis(redis_url)
+    client.flushdb()
+    yield EmailDedupe(client)
+    client.close()
+
+
+def email_job(order=ORDER):
+    return {"job_id": "j", "payload": {"to": "buyer@example.com", "order": order}}
+
+
+def test_email_job_sends_to_the_customer(dedupe):
     mailer = FakeMailer()
-    EmailJob(mailer)({"job_id": "j", "payload": {"to": "buyer@example.com", "order": ORDER}})
+    EmailJob(mailer, dedupe)(email_job())
     [(to, subject, _)] = mailer.sent
     assert to == "buyer@example.com"
     assert subject.startswith("Your OrderFlow receipt")
 
 
-def test_job_without_a_recipient_is_permanent():
+def test_job_without_a_recipient_is_permanent(dedupe):
     with pytest.raises(PermanentJobError):
-        EmailJob(FakeMailer())({"job_id": "j", "payload": {"order": ORDER}})
+        EmailJob(FakeMailer(), dedupe)({"job_id": "j", "payload": {"order": ORDER}})
+
+
+def test_same_job_twice_sends_1_email(dedupe):
+    mailer = FakeMailer()
+    job = EmailJob(mailer, dedupe)
+    job(email_job())
+    job(email_job())
+    assert len(mailer.sent) == 1
+
+
+def test_failed_send_releases_the_claim_so_a_retry_can_send(dedupe):
+    class BrokenMailer(FakeMailer):
+        def send(self, to, subject, body):
+            raise ConnectionError("smtp down")
+
+    with pytest.raises(ConnectionError):
+        EmailJob(BrokenMailer(), dedupe)(email_job())
+    mailer = FakeMailer()
+    EmailJob(mailer, dedupe)(email_job())
+    assert len(mailer.sent) == 1
+
+
+def test_email_being_sent_by_another_worker_is_retried_later(dedupe):
+    dedupe.claim(ORDER["order_id"])  # another worker holds the claim
+    with pytest.raises(EmailBusyError):
+        EmailJob(FakeMailer(), dedupe)(email_job())

@@ -5,6 +5,7 @@ import smtplib
 from email.message import EmailMessage
 from typing import Any, Protocol
 
+from notification_worker.dedupe import Claim, EmailDedupe
 from notification_worker.worker import PermanentJobError
 
 log = logging.getLogger(__name__)
@@ -56,16 +57,34 @@ def receipt(order: dict[str, Any]) -> tuple[str, str]:
     return f"Your OrderFlow receipt ({order['order_id'][:8]})", body
 
 
+class EmailBusyError(Exception):
+    """Another worker is sending this email right now. Temporary: try again later."""
+
+
 class EmailJob:
-    def __init__(self, mailer: Mailer) -> None:
+    def __init__(self, mailer: Mailer, dedupe: EmailDedupe) -> None:
         self._mailer = mailer
+        self._dedupe = dedupe
 
     def __call__(self, job: dict[str, Any]) -> None:
         try:
             to = job["payload"]["to"]
             order = job["payload"]["order"]
+            order_id = order["order_id"]
             subject, body = receipt(order)
         except (KeyError, TypeError) as exc:
             raise PermanentJobError(f"email job is missing data: {exc}") from exc
-        self._mailer.send(to, subject, body)
+
+        claim = self._dedupe.claim(order_id)
+        if claim is Claim.DONE:
+            log.info("receipt already sent; skipping duplicate job")
+            return
+        if claim is Claim.BUSY:
+            raise EmailBusyError(f"another worker is sending the receipt for {order_id}")
+        try:
+            self._mailer.send(to, subject, body)
+        except Exception:
+            self._dedupe.release(order_id)  # let the next try send it
+            raise
+        self._dedupe.mark_sent(order_id)
         log.info("receipt email sent")

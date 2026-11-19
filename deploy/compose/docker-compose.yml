@@ -418,6 +418,18 @@ services:
     mem_limit: 128m
     restart: unless-stopped
 
+  opensearch-init:
+    image: opensearchproject/opensearch:3.9.0
+    # 1-shot: creates orders-v1 and the "orders" alias. The app always uses the alias.
+    entrypoint: ["/bin/sh", "/opensearch/create-orders-index.sh"]
+    volumes:
+      - ./opensearch:/opensearch:ro
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    mem_limit: 64m
+    restart: "no"
+
 volumes:
   postgres-data:
   redis-data:

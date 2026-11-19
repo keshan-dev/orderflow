@@ -68,7 +68,7 @@ def main() -> None:
     configure_logging("inventory-seed")
     engine = make_engine(env_str("DATABASE_URL"), pool_size=1)
     created = retry_transient(lambda: seed(engine))
-    log.info("seed finished", extra={"created": created, "catalog_size": len(CATALOG)})
+    log.info("seed finished", extra={"products_created": created, "catalog_size": len(CATALOG)})
     engine.dispose()
 
 

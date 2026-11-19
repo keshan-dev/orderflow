@@ -61,8 +61,25 @@ class ReserveResult:
     reason: str | None = None
 
 
+class ReleaseOutcome(StrEnum):
+    RELEASED = "RELEASED"
+    ALREADY_RELEASED = "ALREADY_RELEASED"
+    COMMITTED = "COMMITTED"
+    NOT_FOUND = "NOT_FOUND"
+    DUPLICATE = "DUPLICATE"
+
+
+@dataclass(frozen=True)
+class ReleaseResult:
+    order_id: uuid.UUID
+    outcome: ReleaseOutcome
+    lines: list[Line] = field(default_factory=list)
+    reason: str = "requested"
+
+
 Guard = Callable[[Connection], bool]
 OnReserve = Callable[[Connection, ReserveResult], None]
+OnRelease = Callable[[Connection, ReleaseResult], None]
 
 
 class Reservations:
@@ -95,6 +112,54 @@ class Reservations:
             if taken_in_redis:
                 self._give_back_safely(order_id, items)
             raise
+
+    def release(
+        self,
+        order_id: uuid.UUID,
+        *,
+        guard: Guard | None = None,
+        on_result: OnRelease | None = None,
+    ) -> ReleaseResult:
+        """Give an order's stock back. Safe to call many times: only HELD stock is returned."""
+        with self._engine.begin() as conn:
+            if guard is not None and not guard(conn):
+                return ReleaseResult(order_id, ReleaseOutcome.DUPLICATE)
+            row = conn.execute(
+                select(reservations.c.status, reservations.c["items"])
+                .where(reservations.c.order_id == order_id)
+                .with_for_update()
+            ).first()
+            if row is None:
+                result = ReleaseResult(order_id, ReleaseOutcome.NOT_FOUND)
+            else:
+                lines = [Line.from_dict(d) for d in row.items]
+                if row.status == "HELD":
+                    self._return_to_postgres(conn, order_id, lines)
+                    result = ReleaseResult(order_id, ReleaseOutcome.RELEASED, lines)
+                elif row.status == "RELEASED":
+                    result = ReleaseResult(order_id, ReleaseOutcome.ALREADY_RELEASED, lines)
+                else:
+                    result = ReleaseResult(order_id, ReleaseOutcome.COMMITTED, lines)
+            if on_result is not None:
+                on_result(conn, result)
+        # Redis is increased only after Postgres committed (see the module docstring in stock.py).
+        if result.outcome is ReleaseOutcome.RELEASED:
+            self._give_back_safely(order_id, _items(result.lines))
+        return result
+
+    @staticmethod
+    def _return_to_postgres(conn: Connection, order_id: uuid.UUID, lines: list[Line]) -> None:
+        for line in sorted(lines, key=lambda line: line.product_id):
+            conn.execute(
+                update(stock)
+                .where(stock.c.product_id == line.product_id)
+                .values(available=stock.c.available + line.quantity, updated_at=func.now())
+            )
+        conn.execute(
+            update(reservations)
+            .where(reservations.c.order_id == order_id)
+            .values(status="RELEASED", updated_at=func.now())
+        )
 
     def _reserve_new(
         self, conn: Connection, order_id: uuid.UUID, items: list[Item]
@@ -176,3 +241,7 @@ class Reservations:
         except Exception:
             # Redis keeps less stock than Postgres: safe (no overselling), fixed by a resync.
             log.error("giving stock back to redis failed; run a stock resync", exc_info=True)
+
+
+def _items(lines: list[Line]) -> list[Item]:
+    return sorted(Item(line.product_id, line.quantity) for line in lines)

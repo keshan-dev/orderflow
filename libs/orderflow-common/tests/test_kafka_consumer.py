@@ -106,3 +106,34 @@ def test_malformed_message_is_skipped(topic):
     wait_for(lambda: seen == ["Good"])
     assert consumer.healthy
     consumer.stop()
+
+
+def test_batch_consumer_gets_many_events_at_once_and_retries_failed_batches(topic):
+    from orderflow_common.kafka import BatchEventConsumer
+
+    batches: list[list[str]] = []
+    failures = {"left": 4}  # more than the 3 quick attempts, so the batch is read again
+
+    def handler(events):
+        if failures["left"] > 0:
+            failures["left"] -= 1
+            raise ConnectionError("opensearch down")
+        batches.append([e.event_type for e in events])
+
+    produce(topic, *(event_bytes(f"E{i}") for i in range(5)))
+    group = f"g-{uuid.uuid4().hex[:6]}"
+    consumer = BatchEventConsumer(BOOTSTRAP, group, [topic], handler, max_backoff_seconds=1.0)
+    consumer.start()
+    wait_for(lambda: sum(len(b) for b in batches) >= 5)
+    consumer.stop()
+    assert [t for b in batches for t in b] == [f"E{i}" for i in range(5)]
+
+    # Committed: a new consumer in the same group gets nothing old.
+    again: list[str] = []
+    produce(topic, event_bytes("NEW"))
+    consumer = BatchEventConsumer(
+        BOOTSTRAP, group, [topic], lambda evs: again.extend(e.event_type for e in evs)
+    )
+    consumer.start()
+    wait_for(lambda: again == ["NEW"])
+    consumer.stop()

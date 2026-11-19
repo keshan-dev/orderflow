@@ -1,0 +1,17 @@
+[project]
+name = "inventory-service"
+version = "0.1.0"
+description = "Products and stock for OrderFlow. Reserves and releases stock safely under load."
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.120",
+    "orderflow-common",
+    "uvicorn>=0.38",
+]
+
+[tool.uv.sources]
+orderflow-common = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"

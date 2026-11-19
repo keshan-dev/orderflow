@@ -148,7 +148,26 @@ services:
     mem_limit: 448m
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:4.3.8-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    mem_limit: 384m
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:
   kafka-data:
+  rabbitmq-data:

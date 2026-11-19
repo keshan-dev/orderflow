@@ -7,10 +7,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from opensearchpy import OpenSearch
 
 from orderflow_common.events import Event
 from search_indexer.documents import to_document
-from search_indexer.indexer import OrderIndexer, make_client
+from search_indexer.indexer import OrderIndexer
 
 MAPPING = (
     pathlib.Path(__file__).resolve().parents[3] / "deploy/compose/opensearch/orders-mapping.json"
@@ -30,7 +31,7 @@ pytestmark = pytest.mark.skipif(not opensearch_running(), reason="Compose OpenSe
 
 @pytest.fixture
 def index():
-    client = make_client("http://localhost:9200")
+    client = OpenSearch(hosts=["http://localhost:9200"], timeout=30, max_retries=0)
     name = f"test-orders-{uuid.uuid4().hex[:8]}"
     client.indices.create(index=name, body=json.loads(MAPPING.read_text()))
     yield client, name

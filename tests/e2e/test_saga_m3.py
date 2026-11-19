@@ -13,6 +13,7 @@ from helpers import (
     place_order,
     product_id,
     republish,
+    wait_for_api,
     wait_for_status,
 )
 
@@ -53,6 +54,7 @@ def test_stopped_inventory_service_processes_missed_orders_after_restart():
         assert all(wait_for_status(o, "PENDING")["status"] == "PENDING" for o in orders)
     finally:
         compose("start", "inventory-service")
+        wait_for_api()
     for order_id in orders:
         assert (
             wait_for_status(order_id, "STOCK_RESERVED", seconds=120)["status"] == "STOCK_RESERVED"

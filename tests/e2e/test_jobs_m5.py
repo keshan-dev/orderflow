@@ -16,6 +16,7 @@ from helpers import (
     http,
     is_e2e_enabled,
     product_id,
+    wait_for_api,
     wait_for_status,
     wait_until,
 )
@@ -90,6 +91,7 @@ def test_broken_email_server_sends_job_to_dlq_then_replay_sends_once():
         wait_until(lambda: queue_depth("notifications.email.dlq") == dlq_before + 1, 90, "dlq")
     finally:
         compose("start", "mailpit")
+        wait_for_api()
     wait_until(lambda: _mailpit_up(), 60, "mailpit back")
     worker_exec("python", "-m", "notification_worker.replay_dlq", "notifications.email")
     wait_until(lambda: emails_to(email) == 1, 60, "email after replay")

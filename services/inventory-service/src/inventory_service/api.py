@@ -9,7 +9,9 @@ from fastapi import FastAPI, Response
 
 from inventory_service.catalog import list_products
 from inventory_service.config import Settings
-from inventory_service.stock import load_stock_into_redis
+from inventory_service.reservations import Reservations
+from inventory_service.stock import RedisStock, load_stock_into_redis
+from inventory_service.sweeper import Sweeper
 from orderflow_common.connections import (
     make_engine,
     make_redis,
@@ -41,8 +43,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = make_engine(cfg.database_url)
         app.state.redis = make_redis(cfg.redis_url)
         app.state.stock_loaded = _try_load_stock(app)
+        app.state.reservations = Reservations(
+            app.state.engine, RedisStock(app.state.redis), cfg.hold_ttl_seconds
+        )
+        sweeper = Sweeper(app.state.reservations, cfg.sweeper_interval_seconds)
+        sweeper.start()
         log.info("inventory-service started")
         yield
+        sweeper.stop()
         app.state.redis.close()
         app.state.engine.dispose()
         log.info("inventory-service stopped")

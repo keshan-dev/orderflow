@@ -249,6 +249,41 @@ services:
     mem_limit: 64m
     restart: unless-stopped
 
+  inventory-migrate:
+    image: orderflow/inventory-service:dev
+    build:
+      context: ../..
+      dockerfile: services/inventory-service/Dockerfile
+    # 1-shot: apply migrations, then add sample products. Runs before the service starts.
+    command: ["sh", "-c", "alembic upgrade head && python -m inventory_service.seed"]
+    environment:
+      DATABASE_URL: postgresql://inventory_user:${INVENTORY_DB_PASSWORD}@postgres:5432/inventory_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 192m
+    restart: "no"
+
+  inventory-service:
+    image: orderflow/inventory-service:dev
+    environment:
+      DATABASE_URL: postgresql://inventory_user:${INVENTORY_DB_PASSWORD}@postgres:5432/inventory_db
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8002:8002"
+    depends_on:
+      inventory-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/readyz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 192m
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redis-data:

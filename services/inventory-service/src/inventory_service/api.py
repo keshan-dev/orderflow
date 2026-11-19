@@ -9,10 +9,28 @@ from fastapi import FastAPI, Response
 
 from inventory_service.catalog import list_products
 from inventory_service.config import Settings
-from orderflow_common.connections import make_engine, make_redis, postgres_ok, redis_ok
+from inventory_service.stock import load_stock_into_redis
+from orderflow_common.connections import (
+    make_engine,
+    make_redis,
+    postgres_ok,
+    redis_ok,
+    retry_transient,
+)
 from orderflow_common.logging import configure_logging
 
 log = logging.getLogger(__name__)
+
+
+def _try_load_stock(app: FastAPI) -> bool:
+    """Copy stock into Redis. On failure the service stays up but reports not ready."""
+    try:
+        loaded = retry_transient(lambda: load_stock_into_redis(app.state.engine, app.state.redis))
+    except Exception:
+        log.error("loading stock into redis failed; will retry on the next readiness check")
+        return False
+    log.info("stock loaded into redis", extra={"stock_keys_loaded": loaded})
+    return True
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = cfg
         app.state.engine = make_engine(cfg.database_url)
         app.state.redis = make_redis(cfg.redis_url)
+        app.state.stock_loaded = _try_load_stock(app)
         log.info("inventory-service started")
         yield
         app.state.redis.close()
@@ -42,11 +61,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/readyz")
     def readyz(response: Response) -> dict[str, bool]:
-        """The service can do its work right now: Postgres and Redis answer."""
+        """The service can do its work right now: Postgres and Redis answer, stock is loaded."""
         checks = {
             "postgres": postgres_ok(app.state.engine),
             "redis": redis_ok(app.state.redis),
         }
+        if all(checks.values()) and not app.state.stock_loaded:
+            app.state.stock_loaded = _try_load_stock(app)
+        checks["stock_loaded"] = app.state.stock_loaded
         if not all(checks.values()):
             response.status_code = 503
         return checks

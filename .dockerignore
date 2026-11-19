@@ -1,0 +1,14 @@
+# Keep build contexts small and never send secrets or local state to Docker.
+.git
+.venv
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.env
+docs
+deploy
+results
+tmp
+loadtest
+chaos

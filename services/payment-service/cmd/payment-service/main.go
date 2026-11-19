@@ -11,9 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/keshan-dev/orderflow/services/payment-service/internal/config"
+	"github.com/keshan-dev/orderflow/services/payment-service/internal/db"
 	"github.com/keshan-dev/orderflow/services/payment-service/internal/httpapi"
 )
 
@@ -27,14 +26,23 @@ func main() {
 }
 
 func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// "payment-service migrate" applies migrations and exits (used by payment-migrate).
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		url := os.Getenv("DATABASE_URL")
+		if url == "" {
+			return errors.New("DATABASE_URL is required")
+		}
+		return db.Migrate(ctx, url)
+	}
+
 	cfg, err := config.FromEnv()
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	pool, err := newPool(ctx, cfg.DatabaseURL)
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
@@ -44,17 +52,6 @@ func run() error {
 		"postgres": func(ctx context.Context) bool { return pool.Ping(ctx) == nil },
 	})
 	return serve(ctx, server)
-}
-
-func newPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
-	poolConfig, err := pgxpool.ParseConfig(url)
-	if err != nil {
-		return nil, err
-	}
-	poolConfig.MaxConns = 5
-	poolConfig.ConnConfig.ConnectTimeout = 3 * time.Second
-	poolConfig.ConnConfig.RuntimeParams["statement_timeout"] = "5000"
-	return pgxpool.NewWithConfig(ctx, poolConfig)
 }
 
 // serve runs the HTTP server until ctx is cancelled, then shuts it down gracefully.

@@ -19,7 +19,6 @@ Read these in order before you write any code:
 ```
 docs/
   README.md                    <- you are here
-  interview-readiness.html     <- open in a browser; practice questions and answers
   common/                      <- end to end docs that apply to every phase
     01-big-picture.md
     02-architecture.md

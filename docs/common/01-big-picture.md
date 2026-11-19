@@ -150,5 +150,3 @@ When all 5 phases are done, you should be able to explain, without notes:
 - What eBPF is, why it is safe to run in the kernel, and how you link a kernel event to a pod.
 - How a secure AWS network is built: public, private and isolated subnets, security groups, WAF, and VPC endpoints.
 - What it costs to run, and how you keep costs under control.
-
-The [interview readiness guide](../interview-readiness.html) has realistic questions on all of this.

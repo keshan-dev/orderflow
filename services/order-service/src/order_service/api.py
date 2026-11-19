@@ -14,6 +14,8 @@ from order_service.config import Settings
 from order_service.handlers import SagaHandler
 from order_service.idempotency import Begin, IdempotencyStore
 from order_service.orders import NewOrder, create_order, get_order
+from order_service.timeouts import cancel_timed_out_orders
+from orderflow_common.background import PeriodicTask
 from orderflow_common.connections import make_engine, make_redis, postgres_ok, redis_ok
 from orderflow_common.kafka import EventConsumer
 from orderflow_common.logging import configure_logging
@@ -51,8 +53,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             SagaHandler(app.state.engine),
         )
         app.state.saga_consumer.start()
+        timeouts = PeriodicTask(
+            "payment-timeouts",
+            cfg.timeout_check_seconds,
+            lambda: cancel_timed_out_orders(app.state.engine, cfg.payment_timeout_seconds),
+        )
+        timeouts.start()
         log.info("order-service started")
         yield
+        timeouts.stop()
         app.state.saga_consumer.stop()
         app.state.redis.close()
         app.state.engine.dispose()

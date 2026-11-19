@@ -70,12 +70,12 @@ class SagaHandler:
         if not move(conn, event.order_id, PENDING, CANCELLED, cancel_reason=reason):
             log.info("stock rejected ignored: order is not PENDING")
             return
-        _write_order_event(conn, "OrderCancelled", event.order_id)
+        write_order_event(conn, "OrderCancelled", event.order_id)
         log.info("order cancelled", extra={"reason": reason})
 
     def _payment_succeeded(self, conn: Connection, event: Event) -> None:
         if move(conn, event.order_id, STOCK_RESERVED, CONFIRMED, only_if_not_cancelling=True):
-            _write_order_event(conn, "OrderConfirmed", event.order_id)
+            write_order_event(conn, "OrderConfirmed", event.order_id)
             log.info("order confirmed")
             return
         # The order is already cancelled or cancelling (for example the payment timed out
@@ -89,7 +89,7 @@ class SagaHandler:
         if not start_cancelling(conn, event.order_id, reason):
             log.info("payment failed ignored: order is not waiting for payment")
             return
-        _write_order_event(conn, "ReleaseStockRequested", event.order_id)
+        write_order_event(conn, "ReleaseStockRequested", event.order_id)
         log.info("payment failed; stock release requested", extra={"reason": reason})
 
     def _stock_released(self, conn: Connection, event: Event) -> None:
@@ -102,7 +102,7 @@ class SagaHandler:
         if not move(conn, event.order_id, STOCK_RESERVED, CANCELLED, cancel_reason=new_reason):
             log.info("stock released ignored: order is not waiting for payment")
             return
-        _write_order_event(conn, "OrderCancelled", event.order_id)
+        write_order_event(conn, "OrderCancelled", event.order_id)
         log.info("order cancelled after stock release", extra={"reason": new_reason})
 
 
@@ -122,5 +122,5 @@ def start_cancelling(conn: Connection, order_id: uuid.UUID, reason: str) -> bool
     return changed is not None
 
 
-def _write_order_event(conn: Connection, event_type: str, order_id: uuid.UUID) -> None:
+def write_order_event(conn: Connection, event_type: str, order_id: uuid.UUID) -> None:
     write_outbox(conn, AGGREGATE, Event(event_type, order_id, order_payload(conn, order_id)))

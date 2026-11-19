@@ -1,0 +1,178 @@
+"""Reserve stock for orders: Redis first as the fast gate, then Postgres as the source of truth.
+
+Callers can pass 2 hooks that run inside the same Postgres transaction:
+- guard(conn) -> bool: return False to skip (for example, this event was already handled).
+- on_result(conn, result): write follow-up rows (for example an outbox event).
+So the stock change, the duplicate check and the event are saved together or not at all.
+"""
+
+import logging
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import timedelta
+from enum import StrEnum
+
+from sqlalchemy import Connection, Engine, func, insert, select, update
+
+from inventory_service.schema import products, reservations, stock
+from inventory_service.stock import Item, RedisReserve, RedisStock
+
+log = logging.getLogger(__name__)
+
+
+class Outcome(StrEnum):
+    RESERVED = "RESERVED"
+    ALREADY_RESERVED = "ALREADY_RESERVED"
+    REJECTED = "REJECTED"
+    DUPLICATE = "DUPLICATE"
+
+
+@dataclass(frozen=True)
+class Line:
+    product_id: uuid.UUID
+    name: str
+    quantity: int
+    unit_price_cents: int
+
+    def as_dict(self) -> dict:
+        return {
+            "product_id": str(self.product_id),
+            "name": self.name,
+            "quantity": self.quantity,
+            "unit_price_cents": self.unit_price_cents,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Line":
+        return cls(
+            product_id=uuid.UUID(data["product_id"]),
+            name=data["name"],
+            quantity=int(data["quantity"]),
+            unit_price_cents=int(data["unit_price_cents"]),
+        )
+
+
+@dataclass(frozen=True)
+class ReserveResult:
+    order_id: uuid.UUID
+    outcome: Outcome
+    lines: list[Line] = field(default_factory=list)
+    reason: str | None = None
+
+
+Guard = Callable[[Connection], bool]
+OnReserve = Callable[[Connection, ReserveResult], None]
+
+
+class Reservations:
+    def __init__(self, engine: Engine, gate: RedisStock, hold_ttl_seconds: int) -> None:
+        self._engine = engine
+        self._gate = gate
+        self._hold_ttl_seconds = hold_ttl_seconds
+
+    def reserve(
+        self,
+        order_id: uuid.UUID,
+        items: list[Item],
+        *,
+        guard: Guard | None = None,
+        on_result: OnReserve | None = None,
+    ) -> ReserveResult:
+        taken_in_redis = False
+        try:
+            with self._engine.begin() as conn:
+                if guard is not None and not guard(conn):
+                    return ReserveResult(order_id, Outcome.DUPLICATE)
+                result = self._existing(conn, order_id)
+                if result is None:
+                    result, taken_in_redis = self._reserve_new(conn, order_id, items)
+                if on_result is not None:
+                    on_result(conn, result)
+            return result
+        except Exception:
+            # Postgres did not commit. Only undo Redis if this call took the stock there.
+            if taken_in_redis:
+                self._give_back_safely(order_id, items)
+            raise
+
+    def _reserve_new(
+        self, conn: Connection, order_id: uuid.UUID, items: list[Item]
+    ) -> tuple[ReserveResult, bool]:
+        catalog = self._catalog(conn, items)
+        if len(catalog) != len(items):
+            return ReserveResult(order_id, Outcome.REJECTED, reason="unknown_product"), False
+
+        status = self._gate.try_reserve(order_id, items, self._hold_ttl_seconds)
+        if status is RedisReserve.SHORT:
+            return ReserveResult(order_id, Outcome.REJECTED, reason="out_of_stock"), False
+        # ALREADY_HELD means an earlier attempt took the Redis stock but never saved to
+        # Postgres. Finish that reservation now. If it fails, keep the hold: Redis then shows
+        # less stock than Postgres (the safe side) until the hold is resynced.
+        taken_in_redis = status is RedisReserve.RESERVED
+
+        lines = [
+            Line(i.product_id, catalog[i.product_id][0], i.quantity, catalog[i.product_id][1])
+            for i in items
+        ]
+        if not self._take_in_postgres(conn, order_id, items, lines):
+            log.warning("redis allowed a reservation that postgres refused; redis has drifted")
+            if taken_in_redis:
+                self._give_back_safely(order_id, items)
+            return ReserveResult(order_id, Outcome.REJECTED, reason="out_of_stock"), False
+        return ReserveResult(order_id, Outcome.RESERVED, lines), taken_in_redis
+
+    def _existing(self, conn: Connection, order_id: uuid.UUID) -> ReserveResult | None:
+        row = conn.execute(
+            select(reservations.c["items"]).where(reservations.c.order_id == order_id)
+        ).first()
+        if row is None:
+            return None
+        lines = [Line.from_dict(d) for d in row.items]
+        return ReserveResult(order_id, Outcome.ALREADY_RESERVED, lines)
+
+    @staticmethod
+    def _catalog(conn: Connection, items: list[Item]) -> dict[uuid.UUID, tuple[str, int]]:
+        ids = [i.product_id for i in items]
+        rows = conn.execute(
+            select(products.c.id, products.c.name, products.c.price_cents).where(
+                products.c.id.in_(ids)
+            )
+        )
+        return {row.id: (row.name, row.price_cents) for row in rows}
+
+    def _take_in_postgres(
+        self, conn: Connection, order_id: uuid.UUID, items: list[Item], lines: list[Line]
+    ) -> bool:
+        # Lock the stock rows in a fixed order (items are sorted) so 2 orders never deadlock.
+        rows = conn.execute(
+            select(stock.c.product_id, stock.c.available)
+            .where(stock.c.product_id.in_([i.product_id for i in items]))
+            .order_by(stock.c.product_id)
+            .with_for_update()
+        )
+        available = {row.product_id: row.available for row in rows}
+        if any(available.get(i.product_id, 0) < i.quantity for i in items):
+            return False
+        for item in items:
+            conn.execute(
+                update(stock)
+                .where(stock.c.product_id == item.product_id)
+                .values(available=stock.c.available - item.quantity, updated_at=func.now())
+            )
+        conn.execute(
+            insert(reservations).values(
+                order_id=order_id,
+                items=[line.as_dict() for line in lines],
+                status="HELD",
+                expires_at=func.now() + timedelta(seconds=self._hold_ttl_seconds),
+            )
+        )
+        return True
+
+    def _give_back_safely(self, order_id: uuid.UUID, items: list[Item]) -> None:
+        try:
+            self._gate.give_back(order_id, items)
+        except Exception:
+            # Redis keeps less stock than Postgres: safe (no overselling), fixed by a resync.
+            log.error("giving stock back to redis failed; run a stock resync", exc_info=True)

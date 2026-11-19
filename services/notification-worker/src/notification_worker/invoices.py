@@ -89,5 +89,8 @@ class InvoiceJob:
             key = invoice_key(order)
         except (KeyError, TypeError, ValueError) as exc:
             raise PermanentJobError(f"invoice job is missing data: {exc}") from exc
+        if self._store.exists(key):
+            log.info("invoice already stored; skipping duplicate job", extra={"key": key})
+            return
         self._store.put(key, render_invoice(order))
         log.info("invoice stored", extra={"key": key})

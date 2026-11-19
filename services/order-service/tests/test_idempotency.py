@@ -9,6 +9,9 @@ from order_service.api import create_app
 from order_service.config import Settings
 from order_service.schema import orders
 
+# Unreachable on purpose: these tests must never join the Compose consumer groups.
+NO_KAFKA = "127.0.0.1:1"
+
 BODY = {
     "customer_email": "buyer@example.com",
     "items": [{"product_id": str(uuid.uuid4()), "quantity": 1}],
@@ -17,7 +20,13 @@ BODY = {
 
 @pytest.fixture
 def client(engine, redis_client, database_url, redis_url):
-    with TestClient(create_app(Settings(database_url=database_url, redis_url=redis_url))) as c:
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, redis_url=redis_url, kafka_bootstrap_servers=NO_KAFKA
+            )
+        )
+    ) as c:
         yield c
 
 

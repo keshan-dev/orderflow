@@ -7,7 +7,7 @@ from orderflow_common.settings import env_int, env_str
 class Settings:
     database_url: str
     redis_url: str
-    kafka_bootstrap_servers: str = "localhost:29092"
+    kafka_bootstrap_servers: str
     hold_ttl_seconds: int = 900
     sweeper_interval_seconds: int = 10
     product_cache_seconds: int = 60

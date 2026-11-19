@@ -411,7 +411,7 @@ services:
       s3:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-m", "notification_worker.healthcheck"]
+      test: ["CMD", "python", "-m", "orderflow_common.heartbeat"]
       interval: 10s
       timeout: 5s
       retries: 10

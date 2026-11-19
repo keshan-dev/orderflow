@@ -9,7 +9,6 @@
 
 import json
 import logging
-import pathlib
 import time
 from collections.abc import Callable
 from typing import Any
@@ -18,6 +17,7 @@ import pika
 from pika.exceptions import AMQPError
 from tenacity import Retrying, retry_if_not_exception_type, stop_after_attempt, wait_exponential
 
+from orderflow_common.heartbeat import beat
 from orderflow_common.logging import log_context
 from orderflow_common.rabbitmq import JOB_QUEUES, connection_parameters, declare_topology
 
@@ -49,7 +49,7 @@ class Worker:
         self._handlers = handlers
         self._prefetch = prefetch
         self._attempts = attempts
-        self._heartbeat = pathlib.Path(heartbeat_file) if heartbeat_file else None
+        self._heartbeat_file = heartbeat_file
         self._stopping = False
 
     def stop(self) -> None:
@@ -117,5 +117,5 @@ class Worker:
                 handler(job)
 
     def _beat(self) -> None:
-        if self._heartbeat is not None:
-            self._heartbeat.touch()
+        if self._heartbeat_file is not None:
+            beat(self._heartbeat_file)

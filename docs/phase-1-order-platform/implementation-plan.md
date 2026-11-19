@@ -281,6 +281,8 @@ dc start order-service-1
 
 **Done when.** Killing either order-service container causes no failed requests after nginx notices, and the rate limit works across both containers.
 
+Automated in `tests/e2e/test_lb_m7.py`; measured numbers are in [results/phase-1](../../results/phase-1/README.md).
+
 ---
 
 ## M8: Reliability, chaos and load test

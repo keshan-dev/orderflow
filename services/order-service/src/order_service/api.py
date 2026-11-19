@@ -6,8 +6,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, HTTPException, Response
+from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
+from opensearchpy.exceptions import OpenSearchException
 from pydantic import BaseModel, Field
 
 from order_service.config import Settings
@@ -16,6 +17,7 @@ from order_service.idempotency import Begin, IdempotencyStore
 from order_service.job_events import JobsFromEvents
 from order_service.jobs import make_job_publisher
 from order_service.orders import NewOrder, create_order, get_order
+from order_service.search import make_search_client, search_orders
 from order_service.timeouts import cancel_timed_out_orders
 from orderflow_common.background import PeriodicTask
 from orderflow_common.connections import make_engine, make_redis, postgres_ok, redis_ok
@@ -48,6 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = make_engine(cfg.database_url)
         app.state.redis = make_redis(cfg.redis_url)
         app.state.idempotency = IdempotencyStore(app.state.redis)
+        app.state.search = make_search_client(cfg.opensearch_url)
         app.state.saga_consumer = EventConsumer(
             cfg.kafka_bootstrap_servers,
             "order-service",
@@ -124,6 +127,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             extra={"order_id": payload["order_id"], "items": len(new_order.items)},
         )
         return _order_response(202, payload, replayed=not result.created)
+
+    # Declared before /api/orders/{order_id}, so "search" is not read as an order id.
+    @app.get("/api/orders/search")
+    def search(
+        q: Annotated[str, Query(min_length=1, max_length=200)],
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    ) -> dict[str, Any]:
+        cfg: Settings = app.state.settings
+        try:
+            results = search_orders(app.state.search, cfg.search_index, q, limit)
+        except OpenSearchException as exc:
+            log.warning("search failed", exc_info=True)
+            raise HTTPException(503, "search is unavailable, try again later") from exc
+        return {"query": q, "results": results}
 
     @app.get("/api/orders/{order_id}")
     def read_order(order_id: uuid.UUID) -> dict[str, Any]:

@@ -10,7 +10,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M6 done) |
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M7 done) |
 | 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
 | 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
 | 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |
@@ -46,3 +46,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 | 2026-11-19 | Keshan | search-indexer uses a batch consumer and the Bulk API, with the event time as an `external_gte` document version | 1 bulk request per batch instead of 1 per event; versions make retries, late events and overlapping reindex or rebuild runs safe |
 | 2026-11-19 | Keshan | The 3 main event topics keep every event (`retention.ms=-1`) | Read models such as the search index can always be rebuilt from Kafka alone; disk use only grows, acceptable for local learning |
 | 2026-11-19 | Keshan | `orders-v2` mapping uses the english analyzer for product names | Shows why a reindex is needed: an analyzer cannot change on an existing index. A search for "lamps" went from 0 to 3 results |
+| 2026-11-19 | Keshan | nginx retries a failed request once on the other order-service copy, including POST | POST /api/orders is idempotent through its Idempotency-Key, so a retry cannot create a second order |
+| 2026-11-19 | Keshan | nginx re-resolves container names every 2 seconds (`resolve`, `valid=2s`) | A restarted container can get a new IP; nginx must not keep the old one |
+| 2026-11-19 | Keshan | The rate limiter fails open when Redis is down | A broken limiter must not take the order API offline; the risk is a short time without limits |
+| 2026-11-19 | Keshan | Known issue: on the dev machine (about 3.9 GB for Docker) the full e2e suite sometimes hits a short Docker stall (Kafka session timeouts, DNS errors, slow HTTP). 2 of the last 3 full runs passed; 1 had a single failure that did not repeat | Recorded instead of hidden; more Docker memory or fewer running containers would reduce it |

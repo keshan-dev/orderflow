@@ -10,7 +10,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | [Order platform](docs/phase-1-order-platform/README.md) | Not started |
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 and M1 done) |
 | 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
 | 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
 | 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |
@@ -30,3 +30,9 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 | 2026-11-19 | Keshan | Docker has about 3.9 GB of RAM on the dev machine (7.7 GB host). Every container gets a memory limit and small Java heaps; Kafka UI and OpenSearch Dashboards run only with the `ui` Compose profile | The full stack must fit in the RAM available |
 | 2026-11-19 | Keshan | SeaweedFS as the local S3 store instead of MinIO | MinIO no longer publishes community images; the app only uses the S3 API, so any S3-compatible store works |
 | 2026-11-19 | Keshan | Shared Python code lives in `libs/orderflow-common` | Settings, logging, the event envelope and the Kafka consumer are needed by 4 services; 1 copy avoids drift |
+| 2026-11-19 | Keshan | 1 uv workspace for all Python packages, with 1 `uv.lock` | Shared library and services always use the same dependency versions; each Docker image installs only its own package |
+| 2026-11-19 | Keshan | Migrations run in a 1-shot `<service>-migrate` container before the service starts | 2 copies of a service must never run migrations at the same time |
+| 2026-11-19 | Keshan | Redis stock is decreased before Postgres and increased after Postgres | Any failure in between leaves Redis showing less stock than Postgres, never more, so the system cannot oversell; a resync fixes the gap |
+| 2026-11-19 | Keshan | `reservations` has 1 row per order (items as JSONB) | Reserve, release, commit and the sweeper each change 1 row under 1 lock |
+| 2026-11-19 | Keshan | inventory-service also handles `OrderConfirmed`: the hold becomes `COMMITTED` | Without it, the sweeper would give back stock for orders that were already paid |
+| 2026-11-19 | Keshan | order-service sends `RefundPaymentRequested` when a payment succeeds for an order that is already cancelled or cancelling | A payment that arrives after the order timed out must be refunded, not kept |

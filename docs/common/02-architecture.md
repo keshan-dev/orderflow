@@ -106,7 +106,7 @@ All events are written to an **outbox table** in the same database transaction a
 
 | Topic | Producer | Events | Main consumers |
 |---|---|---|---|
-| `orders.events` | order-service | `OrderCreated`, `OrderConfirmed`, `OrderCancelled`, `ReleaseStockRequested`, `ChargePaymentRequested` | inventory-service, payment-service, search-indexer |
+| `orders.events` | order-service | `OrderCreated`, `OrderConfirmed`, `OrderCancelled`, `ReleaseStockRequested`, `ChargePaymentRequested`, `RefundPaymentRequested` | inventory-service, payment-service, search-indexer |
 | `inventory.events` | inventory-service | `StockReserved`, `StockRejected`, `StockReleased` | order-service |
 | `payments.events` | payment-service | `PaymentSucceeded`, `PaymentFailed`, `PaymentRefunded` | order-service |
 | `<topic>.retry` | consumers | failed messages waiting for another try | the same consumer |

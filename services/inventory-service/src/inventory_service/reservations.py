@@ -147,6 +147,32 @@ class Reservations:
             self._give_back_safely(order_id, _items(result.lines))
         return result
 
+    def release_expired(self, limit: int = 50, on_result: OnRelease | None = None) -> int:
+        """Release HELD reservations whose time is up. Returns how many were released.
+
+        SKIP LOCKED makes each sweeper take different rows, so 2 sweepers running at the
+        same time never release the same reservation twice.
+        """
+        released: list[ReleaseResult] = []
+        with self._engine.begin() as conn:
+            rows = conn.execute(
+                select(reservations.c.order_id, reservations.c["items"])
+                .where(reservations.c.status == "HELD", reservations.c.expires_at < func.now())
+                .order_by(reservations.c.expires_at)
+                .limit(limit)
+                .with_for_update(skip_locked=True)
+            ).all()
+            for row in rows:
+                lines = [Line.from_dict(d) for d in row.items]
+                self._return_to_postgres(conn, row.order_id, lines)
+                result = ReleaseResult(row.order_id, ReleaseOutcome.RELEASED, lines, "expired")
+                if on_result is not None:
+                    on_result(conn, result)
+                released.append(result)
+        for result in released:
+            self._give_back_safely(result.order_id, _items(result.lines))
+        return len(released)
+
     @staticmethod
     def _return_to_postgres(conn: Connection, order_id: uuid.UUID, lines: list[Line]) -> None:
         for line in sorted(lines, key=lambda line: line.product_id):

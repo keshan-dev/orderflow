@@ -221,7 +221,7 @@ Because `data` and `kafka` are shared, all environments use the same topics, con
 |---|---|
 | 8080 | nginx load balancer (the only entry for the API) |
 | 8001, 8002, 8003 | order, inventory, payment services (for debugging only) |
-| 5432 | PostgreSQL |
+| 15432 | PostgreSQL (from your machine; containers use `postgres:5432`) |
 | 6379 | Redis |
 | 29092 | Kafka (from your machine; containers use `kafka:19092`) |
 | 8083 | Kafka Connect (Debezium) |

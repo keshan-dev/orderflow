@@ -130,7 +130,7 @@ Tests to write:
 
 **Tasks**
 
-- [ ] `deploy/compose/debezium/` with 3 connector JSON files and `register-connectors.sh` (reads credentials from env vars, uses `curl` with `--max-time` and a retry limit).
+- [ ] `deploy/compose/debezium/` with 1 connector JSON file per database and `register-connectors.sh` (reads credentials from env vars, uses `curl` with `--max-time` and a retry limit). The payments connector is added in M4.
 - [ ] Confirm `OrderCreated` appears in `orders.events` with `order_id` as the key.
 - [ ] A small shared Kafka consumer helper for the Python services: manual offset commit, `processed_events` check, limited retries.
 - [ ] inventory-service consumes `OrderCreated`, reserves stock, writes `StockReserved` or `StockRejected`. Remove the temporary internal endpoints.
@@ -141,8 +141,8 @@ Tests to write:
 **How to test**
 
 ```bash
-./deploy/compose/debezium/register-connectors.sh
-curl -s localhost:8083/connectors?expand=status     # all 3 RUNNING
+dc up -d debezium-init                               # registers the connectors
+curl -s localhost:8083/connectors?expand=status     # every connector RUNNING
 # place an order, then:
 curl -s localhost:8001/api/orders/<id>               # status STOCK_RESERVED
 # place an order for more than the stock:
@@ -151,8 +151,7 @@ curl -s localhost:8001/api/orders/<id>               # status CANCELLED
 
 In Kafka UI, open `orders.events` and `inventory.events` and follow the events for 1 order.
 
-- [ ] **Duplicate test:** use Kafka UI or a script to publish the same `OrderCreated` again. Stock must not change.
-- [ ] **Restart test:** stop inventory-service, place 5 orders, start it again. All 5 are processed.
+- [ ] **Duplicate test** and **restart test**: automated in `tests/e2e/test_saga_m3.py`. Run `uv run --all-packages pytest tests/e2e` with the stack running.
 
 **Done when.** The happy path and the "not enough stock" path both work, and duplicates and restarts cause no wrong data.
 

@@ -139,27 +139,35 @@ with session.begin():                      # 1 transaction
 
 ### Debezium connectors
 
-- 1 connector per database (3 in total), registered through the Kafka Connect REST API on port 8083 by `deploy/compose/debezium/register-connectors.sh`.
-- Each connector only watches `public.outbox` (`table.include.list`).
-- Each connector uses the Outbox Event Router transform. The idea of the config:
+- 1 connector per database, registered through the Kafka Connect REST API on port 8083 by the 1-shot `debezium-init` container, which runs `deploy/compose/debezium/register-connectors.sh`. It uses `PUT /connectors/<name>/config`, so running it again is safe.
+- Each connector reads only `public.outbox`, through the `dbz_outbox` publication that each service's first migration creates (`publication.autocreate.mode=disabled`).
+- All connectors log in as 1 read-only user, `cdc`, which has the `REPLICATION` attribute and `SELECT` on every service table through default privileges. Its password comes from the `CDC_DB_PASSWORD` env var of the Kafka Connect container, read with the Kafka Connect `env` config provider, so it is never stored in a Kafka topic.
+- `snapshot.mode=no_data`: only new outbox rows are published.
+- The connector config (see `deploy/compose/debezium/connectors/`):
 
 ```json
 {
   "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
   "plugin.name": "pgoutput",
-  "database.hostname": "postgres",
   "database.dbname": "orders_db",
-  "database.user": "${env:CDC_ORDERS_DB_USER}",
-  "database.password": "${env:CDC_ORDERS_DB_PASSWORD}",
+  "database.user": "cdc",
+  "database.password": "${env:CDC_DB_PASSWORD}",
+  "publication.name": "dbz_outbox",
   "table.include.list": "public.outbox",
   "transforms": "outbox",
   "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
-  "transforms.outbox.route.by.field": "aggregatetype",
-  "transforms.outbox.route.topic.replacement": "${routedByValue}.events"
+  "transforms.outbox.route.topic.replacement": "${routedByValue}.events",
+  "transforms.outbox.table.expand.json.payload": "true",
+  "transforms.outbox.table.fields.additional.placement": "type:header:eventType",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false"
 }
 ```
 
-With `aggregatetype = 'orders'` the event goes to `orders.events`. The `aggregateid` (order_id) becomes the message key, so all events for 1 order land on the same partition in order. Check every property name against the Debezium docs for the version you pin. Credentials come from environment variables, never from a file in Git.
+With `aggregatetype = 'orders'` the event goes to `orders.events`. The `aggregateid` (order_id) becomes the message key, so all events for 1 order land on the same partition in order. The value is the event envelope as plain JSON, and the event type is also in the `eventType` header.
+
+Note: the JSON expansion leaves out fields whose value is `null`. Consumers must read optional fields with a default (for example `payload.get("total_cents")`).
 
 ### Cleaning the outbox
 

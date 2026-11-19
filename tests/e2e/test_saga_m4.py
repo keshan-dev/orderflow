@@ -12,6 +12,7 @@ from helpers import (
     product_id,
     recreate,
     republish,
+    wait_for_api,
     wait_for_status,
     wait_until,
 )
@@ -115,6 +116,7 @@ def test_payment_after_the_order_timed_out_is_refunded():
         assert order["cancel_reason"] == "payment_timeout"
     finally:
         compose("start", "payment-service")
+        wait_for_api()
     # The charge request is still in Kafka: payment-service charges it, order-service
     # sees the order is cancelled and asks for a refund.
     wait_until(lambda: payments(order_id) == ["REFUNDED"], 90, "late payment refunded")

@@ -21,15 +21,15 @@ from confluent_kafka import Consumer, Producer
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COMPOSE_FILE = ROOT / "deploy" / "compose" / "docker-compose.yml"
-ORDER_API = "http://localhost:8001"
-INVENTORY_API = "http://localhost:8002"
+ORDER_API = "http://localhost:8080"  # through nginx
+INVENTORY_API = "http://localhost:8080"  # through nginx
 KAFKA = "localhost:29092"
-HTTP_TIMEOUT = 5
+HTTP_TIMEOUT = 10  # the dev machine is near its memory limit; short stalls happen
 
 
 def stack_running() -> bool:
     try:
-        with socket.create_connection(("localhost", 8001), timeout=1):
+        with socket.create_connection(("localhost", 8080), timeout=1):
             return True
     except OSError:
         return False
@@ -54,6 +54,20 @@ def compose(*args: str, env: dict[str, str] | None = None) -> None:
     )
 
 
+def wait_for_api(seconds: float = 60) -> None:
+    """After a restart, wait until both APIs answer through nginx again."""
+
+    def ready() -> bool:
+        try:
+            return http("GET", f"{INVENTORY_API}/api/products")[0] == 200 and http(
+                "GET", f"{ORDER_API}/api/orders/search?q=ready"
+            )[0] in (200, 503)
+        except OSError:
+            return False
+
+    wait_until(ready, seconds, "apis reachable through nginx")
+
+
 def recreate(service: str, **env: str) -> None:
     """Restart 1 service with different settings and wait until it is healthy."""
     compose("up", "-d", "--no-deps", "--force-recreate", service, env=env)
@@ -69,6 +83,7 @@ def recreate(service: str, **env: str) -> None:
         return result.stdout.strip() == "healthy"
 
     wait_until(healthy, 120, f"{service} healthy")
+    wait_for_api()
 
 
 def http(method: str, url: str, body: Any = None, headers: dict | None = None) -> tuple[int, Any]:
@@ -79,9 +94,17 @@ def http(method: str, url: str, body: Any = None, headers: dict | None = None) -
         request.add_header(key, value)
     try:
         with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
-            return response.status, json.loads(response.read() or b"null")
+            return response.status, _body(response.read())
     except urllib.error.HTTPError as error:
-        return error.code, json.loads(error.read() or b"null")
+        return error.code, _body(error.read())
+
+
+def _body(raw: bytes) -> Any:
+    """JSON from the services; plain text from nginx error pages (for example a 502)."""
+    try:
+        return json.loads(raw or b"null")
+    except json.JSONDecodeError:
+        return raw.decode(errors="replace")
 
 
 def product_id(sku: str) -> str:

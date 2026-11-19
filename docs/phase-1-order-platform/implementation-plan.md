@@ -221,8 +221,10 @@ All of these are automated in `tests/e2e/test_saga_m4.py`.
 # S3 file browser http://localhost:7888/buckets/orderflow-invoices/ -> 1 PDF at the right key
 ```
 
-- [ ] **DLQ test:** stop Mailpit, place an order. After the retries, the message is in `notifications.email.dlq`. Start Mailpit and move the message back with the RabbitMQ UI or a script. The email arrives once.
+- [ ] **DLQ test:** stop Mailpit, place an order. After the retries, the message is in `notifications.email.dlq`. Start Mailpit and replay it with `dc exec notification-worker python -m notification_worker.replay_dlq notifications.email`. The email arrives once.
 - [ ] **Duplicate test:** publish the same job 2 times. Still 1 email and 1 PDF.
+
+Both are automated in `tests/e2e/test_jobs_m5.py`.
 
 **Done when.** 1 confirmed order means exactly 1 email and 1 PDF, even with duplicates and a broken email server.
 

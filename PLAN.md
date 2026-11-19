@@ -10,7 +10,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M4 done) |
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M5 done) |
 | 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
 | 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
 | 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |

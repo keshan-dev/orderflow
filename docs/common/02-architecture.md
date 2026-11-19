@@ -166,7 +166,7 @@ order-service publishes jobs through a small interface chosen by the env var `JO
 | `cache:products` | inventory-service | Cached product list | 60 seconds |
 | `idem:{key}` | order-service | Response for an `Idempotency-Key` | 24 hours |
 | `ratelimit:{client}` | order-service | Request counter for rate limiting | 60 seconds |
-| `notified:{order_id}` | notification-worker | Marks that the receipt email was already sent, so a repeated job does not send it twice | 24 hours |
+| `notified:{order_id}` | notification-worker | `sending` while 1 worker sends the receipt (claim, 2 minutes), then `sent`, so a repeated job does not send it twice | 2 minutes while sending, then 24 hours |
 
 PostgreSQL is the source of truth. Redis is fast but can be rebuilt from PostgreSQL if it is lost.
 

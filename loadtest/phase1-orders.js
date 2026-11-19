@@ -1,6 +1,6 @@
 // Order load test for Phase 1 (M8). Run it through nginx, ideally with the chaos script.
 //
-//   k6 run -e BASE_URL=http://localhost:8080 -e VUS=10 -e DURATION=180s \
+//   k6 run -e BASE_URL=http://127.0.0.1:8080 -e VUS=10 -e DURATION=180s \
 //     --summary-export results/phase-1/<date>-orders.json loadtest/phase1-orders.js
 //
 // Every virtual user has its own X-Client-Id, so the rate limit (per client) does not
@@ -10,7 +10,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter } from 'k6/metrics';
 
-const BASE = __ENV.BASE_URL || 'http://localhost:8080';
+const BASE = __ENV.BASE_URL || 'http://127.0.0.1:8080';
 const REPEAT_SHARE = Number(__ENV.REPEAT_SHARE || 0.1);
 
 const accepted = new Counter('orders_accepted');

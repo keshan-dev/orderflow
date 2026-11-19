@@ -31,11 +31,21 @@ class OrderIndexer:
         self._client = client
         self._index = index
 
-    def index_events(self, events: list[Event]) -> None:
+    def index_events(self, events: list[Event]) -> list[Event]:
+        """Write 1 document per event. Returns the events OpenSearch rejected for good (for
+        example a document that does not fit the mapping); the consumer sends those to the
+        dead letter topic. Temporary errors (429, 5xx) raise, so the whole batch is retried."""
         body: list[dict[str, Any]] = []
+        sent: list[Event] = []
+        rejected: list[Event] = []
         for event in events:
             order = event.payload.get("order")
             if not order:
+                continue
+            try:
+                document = to_document(order)
+            except (KeyError, TypeError, ValueError):
+                rejected.append(event)
                 continue
             action = {
                 "_index": self._index,
@@ -43,15 +53,22 @@ class OrderIndexer:
                 "version": version(event),
                 "version_type": "external_gte",
             }
-            body += [{"index": action}, to_document(order)]
+            body += [{"index": action}, document]
+            sent.append(event)
         if not body:
-            return
+            return rejected
         response = self._client.bulk(body=body)
-        failed = [
-            item["index"]
-            for item in response["items"]
-            if item["index"].get("error") and item["index"]["status"] != VERSION_CONFLICT
-        ]
-        if failed:
-            raise BulkIndexError(f"{len(failed)} documents failed, first: {failed[0]}")
-        log.info("orders indexed", extra={"documents": len(body) // 2})
+        temporary = []
+        for event, item in zip(sent, response["items"], strict=True):
+            result = item["index"]
+            status = result.get("status", 200)
+            if not result.get("error") or status == VERSION_CONFLICT:
+                continue
+            if status == 429 or status >= 500:
+                temporary.append(result)
+            else:
+                rejected.append(event)
+        if temporary:
+            raise BulkIndexError(f"{len(temporary)} documents failed, first: {temporary[0]}")
+        log.info("orders indexed", extra={"documents": len(sent), "rejected": len(rejected)})
+        return rejected

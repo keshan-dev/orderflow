@@ -7,7 +7,7 @@ from orderflow_common.settings import env_int, env_str
 class Settings:
     database_url: str
     redis_url: str
-    kafka_bootstrap_servers: str = "localhost:29092"
+    kafka_bootstrap_servers: str
     # Keep shorter than inventory-service HOLD_TTL_SECONDS (900 by default).
     payment_timeout_seconds: int = 120
     timeout_check_seconds: int = 10

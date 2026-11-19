@@ -3,6 +3,9 @@ from fastapi.testclient import TestClient
 from inventory_service.api import create_app
 from inventory_service.config import Settings
 
+# Unreachable on purpose: these tests must never join the Compose consumer groups.
+NO_KAFKA = "127.0.0.1:1"
+
 UNREACHABLE = Settings(
     database_url="postgresql://x:y@127.0.0.1:1/none",
     redis_url="redis://127.0.0.1:1/0",
@@ -28,7 +31,9 @@ def test_readyz_is_503_when_dependencies_are_down():
 
 
 def test_readyz_is_200_with_real_dependencies(database_url, redis_url):
-    settings = Settings(database_url=database_url, redis_url=redis_url)
+    settings = Settings(
+        database_url=database_url, redis_url=redis_url, kafka_bootstrap_servers=NO_KAFKA
+    )
     with TestClient(create_app(settings)) as client:
         response = client.get("/readyz")
     assert response.status_code == 200

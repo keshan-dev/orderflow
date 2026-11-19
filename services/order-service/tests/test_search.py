@@ -5,9 +5,9 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from opensearchpy import OpenSearch
 
 from order_service.api import create_app
-from order_service.search import make_search_client
 
 MAPPING = (
     pathlib.Path(__file__).resolve().parents[3] / "deploy/compose/opensearch/orders-mapping.json"
@@ -37,7 +37,9 @@ def test_search_needs_a_query(engine, redis_client, app_settings):
 def test_search_finds_orders_by_product_name_and_status(engine, redis_client, app_settings):
     import dataclasses
 
-    search = make_search_client("http://localhost:9200")
+    # Admin calls use a patient client: the app client gives up after 3 seconds and retries,
+    # which can turn 1 slow "create index" into "index already exists".
+    search = OpenSearch(hosts=["http://localhost:9200"], timeout=30, max_retries=0)
     index = f"test-orders-{uuid.uuid4().hex[:8]}"
     search.indices.create(index=index, body=json.loads(MAPPING.read_text()))
     try:

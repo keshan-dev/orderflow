@@ -1,9 +1,9 @@
-"""Background thread that releases expired stock holds every few seconds."""
+"""Background task that releases expired stock holds every few seconds."""
 
 import logging
-import threading
 
 from inventory_service.reservations import OnRelease, Reservations
+from orderflow_common.background import PeriodicTask
 
 log = logging.getLogger(__name__)
 
@@ -16,28 +16,17 @@ class Sweeper:
         on_result: OnRelease | None = None,
     ) -> None:
         self._service = service
-        self._interval = interval_seconds
         self._on_result = on_result
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, name="hold-sweeper", daemon=True)
+        self._task = PeriodicTask("hold-sweeper", interval_seconds, self.sweep_once)
 
     def start(self) -> None:
-        self._thread.start()
+        self._task.start()
 
     def stop(self, timeout: float = 5.0) -> None:
-        self._stop.set()
-        self._thread.join(timeout)
+        self._task.stop(timeout)
 
     def sweep_once(self) -> int:
         released = self._service.release_expired(on_result=self._on_result)
         if released:
             log.info("released expired holds", extra={"released": released})
         return released
-
-    def _run(self) -> None:
-        while not self._stop.wait(self._interval):
-            try:
-                self.sweep_once()
-            except Exception:
-                # Keep the thread alive; the next round tries again.
-                log.error("sweeping expired holds failed", exc_info=True)

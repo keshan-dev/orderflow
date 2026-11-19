@@ -11,9 +11,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from order_service.config import Settings
+from order_service.handlers import SagaHandler
 from order_service.idempotency import Begin, IdempotencyStore
 from order_service.orders import NewOrder, create_order, get_order
 from orderflow_common.connections import make_engine, make_redis, postgres_ok, redis_ok
+from orderflow_common.kafka import EventConsumer
 from orderflow_common.logging import configure_logging
 
 log = logging.getLogger(__name__)
@@ -42,8 +44,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = make_engine(cfg.database_url)
         app.state.redis = make_redis(cfg.redis_url)
         app.state.idempotency = IdempotencyStore(app.state.redis)
+        app.state.saga_consumer = EventConsumer(
+            cfg.kafka_bootstrap_servers,
+            "order-service",
+            ["inventory.events", "payments.events"],
+            SagaHandler(app.state.engine),
+        )
+        app.state.saga_consumer.start()
         log.info("order-service started")
         yield
+        app.state.saga_consumer.stop()
         app.state.redis.close()
         app.state.engine.dispose()
         log.info("order-service stopped")
@@ -106,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         checks = {
             "postgres": postgres_ok(app.state.engine),
             "redis": redis_ok(app.state.redis),
+            "saga_consumer": app.state.saga_consumer.healthy,
         }
         if not all(checks.values()):
             response.status_code = 503

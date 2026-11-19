@@ -31,7 +31,7 @@ Everything runs in 1 Docker Compose project from `deploy/compose/`. All containe
            |       | kafka-connect :8083 (Debezium) reads outbox   |
            |       +--------------+---------------+                |
            |                      v                                |
-           +--------------> kafka :9092 <--------------------------+
+           +-------------> kafka :19092 <--------------------------+
            |                 |        \
            |                 v         \--> search-indexer --> opensearch :9200
            |           kafka-ui :8085                          dashboards :5601
@@ -61,8 +61,8 @@ Each Kafka consumer uses its service name as the consumer group id:
 
 | Consumer group | Reads | Why |
 |---|---|---|
-| `inventory-service` | `orders.events` | Reacts to `OrderCreated` and `ReleaseStockRequested` |
-| `payment-service` | `orders.events` | Reacts to `ChargePaymentRequested` |
+| `inventory-service` | `orders.events` | Reacts to `OrderCreated`, `OrderConfirmed` and `ReleaseStockRequested` |
+| `payment-service` | `orders.events` | Reacts to `ChargePaymentRequested` and `RefundPaymentRequested` |
 | `order-service` | `inventory.events`, `payments.events` | Moves the saga forward |
 | `order-service-jobs` | `orders.events` | Turns `OrderConfirmed` into RabbitMQ jobs (see section 9) |
 | `search-indexer` | `orders.events` | Keeps OpenSearch up to date |
@@ -92,9 +92,12 @@ order-service is the **orchestrator**. It stores the order and its status in `or
 | 3b | `StockReserved` | order-service | Status `PENDING` to `STOCK_RESERVED` | `ChargePaymentRequested` |
 | 4 | `ChargePaymentRequested` | payment-service | Call the fake provider. Insert `payments` row. | `PaymentSucceeded` or `PaymentFailed` |
 | 5a | `PaymentSucceeded` | order-service | Status `STOCK_RESERVED` to `CONFIRMED` | `OrderConfirmed` |
+| 5a+ | `OrderConfirmed` | inventory-service | Reservation `HELD` to `COMMITTED`, so the sweeper never gives sold stock back | none |
 | 5b | `PaymentFailed` | order-service | Status stays `STOCK_RESERVED`, mark `cancel_reason` | `ReleaseStockRequested` |
 | 6 | `ReleaseStockRequested` | inventory-service | Give the stock back. Mark the reservation released. | `StockReleased` |
 | 7 | `StockReleased` | order-service | Status `STOCK_RESERVED` to `CANCELLED` | `OrderCancelled` |
+| 8 | `PaymentSucceeded` for an order that is already `CANCELLED` or cancelling (for example after a timeout) | order-service | Nothing changes on the order | `RefundPaymentRequested` |
+| 9 | `RefundPaymentRequested` | payment-service | Refund through the fake provider, mark the payment `REFUNDED` | `PaymentRefunded` |
 
 The **compensation** (the undo step) is step 5b to 7: payment failed, so the stock reservation from step 2 is undone.
 
@@ -376,11 +379,11 @@ Every service reads the **same generic names** from [the common architecture, se
 |---|---|---|
 | `DATABASE_URL` | Each service gets its own: order-service points to `orders_db`, inventory-service to `inventory_db`, payment-service to `payments_db` | order, inventory, payment |
 | `REDIS_URL` | `redis://redis:6379/0` | order, inventory, notification-worker |
-| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | all except notification-worker |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:19092` | all except notification-worker |
 | `RABBITMQ_URL` | from `.env` (contains the password) | order-service, notification-worker |
 | `JOB_BACKEND` | `rabbitmq` | order-service (on AWS, Lambda replaces notification-worker) |
 | `S3_BUCKET` | `orderflow-invoices` | notification-worker |
-| `OPENSEARCH_URL` | `https://opensearch:9200` | order-service, search-indexer |
+| `OPENSEARCH_URL` | `http://opensearch:9200` (no TLS locally) | order-service, search-indexer |
 
 Local-only extras (not needed on AWS, or provided by the platform there):
 

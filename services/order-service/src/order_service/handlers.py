@@ -11,8 +11,8 @@ from collections.abc import Callable
 from sqlalchemy import Connection, Engine, func, update
 
 from order_service.orders import AGGREGATE, order_payload
-from order_service.saga import CANCELLED, PENDING, STOCK_RESERVED, move
-from order_service.schema import order_items
+from order_service.saga import CANCELLED, CONFIRMED, PENDING, STOCK_RESERVED, move
+from order_service.schema import order_items, orders
 from orderflow_common.events import Event, first_time, write_outbox
 
 log = logging.getLogger(__name__)
@@ -24,6 +24,8 @@ class SagaHandler:
         self._routes: dict[str, Callable[[Connection, Event], None]] = {
             "StockReserved": self._stock_reserved,
             "StockRejected": self._stock_rejected,
+            "PaymentSucceeded": self._payment_succeeded,
+            "PaymentFailed": self._payment_failed,
         }
 
     def __call__(self, event: Event) -> None:
@@ -69,6 +71,41 @@ class SagaHandler:
             return
         _write_order_event(conn, "OrderCancelled", event.order_id)
         log.info("order cancelled", extra={"reason": reason})
+
+    def _payment_succeeded(self, conn: Connection, event: Event) -> None:
+        if move(conn, event.order_id, STOCK_RESERVED, CONFIRMED, only_if_not_cancelling=True):
+            _write_order_event(conn, "OrderConfirmed", event.order_id)
+            log.info("order confirmed")
+            return
+        # The order is already cancelled or cancelling (for example the payment timed out
+        # first). The money was taken, so it must be given back.
+        payload = {"payment_id": event.payload.get("payment_id"), "reason": "order_not_payable"}
+        write_outbox(conn, AGGREGATE, Event("RefundPaymentRequested", event.order_id, payload))
+        log.warning("payment succeeded for an order that cannot be confirmed; refund requested")
+
+    def _payment_failed(self, conn: Connection, event: Event) -> None:
+        reason = f"payment_failed:{event.payload.get('reason', 'unknown')}"
+        if not start_cancelling(conn, event.order_id, reason):
+            log.info("payment failed ignored: order is not waiting for payment")
+            return
+        _write_order_event(conn, "ReleaseStockRequested", event.order_id)
+        log.info("payment failed; stock release requested", extra={"reason": reason})
+
+
+def start_cancelling(conn: Connection, order_id: uuid.UUID, reason: str) -> bool:
+    """Mark a STOCK_RESERVED order as cancelling. The status stays STOCK_RESERVED until the
+    stock is really released; cancel_reason stops a late payment from confirming it."""
+    changed = conn.execute(
+        update(orders)
+        .where(
+            orders.c.id == order_id,
+            orders.c.status == STOCK_RESERVED,
+            orders.c.cancel_reason.is_(None),
+        )
+        .values(cancel_reason=reason, updated_at=func.now())
+        .returning(orders.c.id)
+    ).first()
+    return changed is not None
 
 
 def _write_order_event(conn: Connection, event_type: str, order_id: uuid.UUID) -> None:

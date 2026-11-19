@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -58,25 +59,34 @@ func run() error {
 
 	fake := provider.NewFake(cfg.FailureRate, cfg.ProviderDelay)
 	service := payments.New(pool, fake, cfg.ProviderTimeout, cfg.ProviderAttempts)
-	consumer, err := kafka.New(cfg.KafkaBrokers, "payment-service", []string{"orders.events"}, service.Handle)
+	topics := []string{"orders.events"}
+	consumer, err := kafka.New(cfg.KafkaBrokers, "payment-service", topics, service.Handle)
 	if err != nil {
 		return err
 	}
-	consumerDone := make(chan struct{})
-	go func() {
-		defer close(consumerDone)
-		consumer.Run(ctx)
-	}()
+	retries, err := kafka.NewRetry(cfg.KafkaBrokers, "payment-service", topics, service.Handle)
+	if err != nil {
+		return err
+	}
+	var running sync.WaitGroup
+	for _, c := range []*kafka.Consumer{consumer, retries} {
+		running.Add(1)
+		go func() {
+			defer running.Done()
+			c.Run(ctx)
+		}()
+	}
 	slog.Info("payment-service started",
 		"failure_rate", cfg.FailureRate, "provider_delay", cfg.ProviderDelay.String())
 
 	server := httpapi.NewServer(cfg.HTTPAddr, map[string]httpapi.Check{
-		"postgres": func(ctx context.Context) bool { return pool.Ping(ctx) == nil },
-		"consumer": consumer.Healthy,
+		"postgres":       func(ctx context.Context) bool { return pool.Ping(ctx) == nil },
+		"consumer":       consumer.Healthy,
+		"retry_consumer": retries.Healthy,
 	})
 	err = serve(ctx, server)
 	stop()
-	<-consumerDone
+	running.Wait()
 	return err
 }
 

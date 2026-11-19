@@ -203,9 +203,42 @@ services:
     mem_limit: 512m
     restart: unless-stopped
 
+  s3:
+    image: chrislusf/seaweedfs:4.54
+    # S3-compatible object store (MinIO no longer publishes community images).
+    # The credentials file is written at startup from env vars, so no secret is stored in the repo.
+    entrypoint: ["/bin/sh", "/scripts/start-s3.sh"]
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+    ports:
+      # Host ports 7333 and 7888: Windows reserves 8295 to 8894 on the dev machine.
+      - "7333:8333"   # S3 API
+      - "7888:8888"   # file browser (filer UI)
+    volumes:
+      - s3-data:/data
+      - ./s3/start-s3.sh:/scripts/start-s3.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null -T 3 http://localhost:8888/ && wget -q -S -O /dev/null -T 3 http://localhost:8333/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    mem_limit: 256m
+    restart: unless-stopped
+
+  s3-init:
+    image: chrislusf/seaweedfs:4.54
+    depends_on:
+      s3:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c", "echo 's3.bucket.create -name orderflow-invoices' | weed shell -master=s3:9333 && echo 's3.bucket.list' | weed shell -master=s3:9333"]
+    mem_limit: 128m
+    restart: "no"
+
 volumes:
   postgres-data:
   redis-data:
   kafka-data:
   rabbitmq-data:
   opensearch-data:
+  s3-data:

@@ -43,7 +43,7 @@ dc exec postgres psql -U postgres -c '\l'          # 3 databases listed
 dc exec postgres psql -U postgres -c 'SHOW wal_level;'   # logical
 ```
 
-Open Kafka UI (http://localhost:8085), RabbitMQ (http://localhost:15672), MinIO console (http://localhost:9001) and Mailpit (http://localhost:8025) in a browser.
+Open Kafka UI (http://localhost:8085), RabbitMQ (http://localhost:15672), the S3 file browser (http://localhost:7888/buckets/) and Mailpit (http://localhost:8025) in a browser.
 
 **Done when.** `dc down -v && dc up -d` gives a fully healthy stack every time, with no manual steps.
 
@@ -216,7 +216,7 @@ PAYMENT_DELAY_MS=<more than the timeout> dc up -d payment-service   # timeout pa
 ```bash
 # place an order that confirms, then:
 # Mailpit http://localhost:8025 -> 1 email
-# MinIO console http://localhost:9001 -> 1 PDF at the right key
+# S3 file browser http://localhost:7888/buckets/orderflow-invoices/ -> 1 PDF at the right key
 ```
 
 - [ ] **DLQ test:** stop Mailpit, place an order. After the retries, the message is in `notifications.email.dlq`. Start Mailpit and move the message back with the RabbitMQ UI or a script. The email arrives once.
@@ -243,7 +243,7 @@ PAYMENT_DELAY_MS=<more than the timeout> dc up -d payment-service   # timeout pa
 ```bash
 curl -s 'localhost:8080/api/orders/search?q=<product name>'
 ./deploy/compose/opensearch/reindex-v2.sh
-curl -s localhost:9200/_alias/orders -u "admin:$OPENSEARCH_INITIAL_ADMIN_PASSWORD"   # points to orders-v2
+curl -s localhost:9200/_alias/orders   # points to orders-v2
 ```
 
 - [ ] Run k6 search requests during the reindex. No request fails.
@@ -318,7 +318,7 @@ dc run --rm reconcile
 A 3 to 5 minute demo to record and to show in the interview:
 
 1. `dc ps`: show every container healthy. Show the architecture diagram.
-2. Place 1 order through nginx. Follow it in Kafka UI through `orders.events`, `inventory.events` and `payments.events`. Show the email in Mailpit and the PDF in MinIO. Search for it.
+2. Place 1 order through nginx. Follow it in Kafka UI through `orders.events`, `inventory.events` and `payments.events`. Show the email in Mailpit and the PDF in the S3 file browser. Search for it.
 3. Send the same request again with the same `Idempotency-Key`: same order id, still 1 order.
 4. Set `PAYMENT_FAILURE_RATE=1`, place an order, show it end `CANCELLED` and the stock back where it was.
 5. Start the chaos script and the k6 test together. Show containers being killed.

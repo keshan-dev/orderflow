@@ -223,12 +223,12 @@ Because `data` and `kafka` are shared, all environments use the same topics, con
 | 8001, 8002, 8003 | order, inventory, payment services (for debugging only) |
 | 5432 | PostgreSQL |
 | 6379 | Redis |
-| 9092 | Kafka |
+| 29092 | Kafka (from your machine; containers use `kafka:19092`) |
 | 8083 | Kafka Connect (Debezium) |
 | 8085 | Kafka UI |
 | 5672, 15672 | RabbitMQ, RabbitMQ management UI |
 | 9200, 5601 | OpenSearch, OpenSearch Dashboards |
-| 9000, 9001 | MinIO API, MinIO console |
+| 7333, 7888 | S3 API, S3 file browser (SeaweedFS) |
 | 1025, 8025 | Mailpit SMTP, Mailpit web UI (fake inbox, no real email leaves your machine) |
 
 ## 13. How the system grows phase by phase

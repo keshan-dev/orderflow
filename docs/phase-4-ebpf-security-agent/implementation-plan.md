@@ -301,7 +301,7 @@ kubectl get daemonset -n security runtime-sentinel   # DESIRED and READY equal t
 kubectl logs -n security -l app.kubernetes.io/name=runtime-sentinel --tail=20
 
 # read a few messages from Kafka (run inside a Kafka broker pod)
-bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+bin/kafka-console-consumer.sh --bootstrap-server localhost:29092 \
   --topic security.events --from-beginning --max-messages 5
 ```
 

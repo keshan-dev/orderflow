@@ -37,7 +37,7 @@ Everything runs in 1 Docker Compose project from `deploy/compose/`. All containe
            |           kafka-ui :8085                          dashboards :5601
            v
      rabbitmq :5672 ---> notification-worker ---> mailpit :1025 (web :8025)
-     (UI :15672)                           \----> minio :9000 (console :9001)
+     (UI :15672)                           \----> s3 :7333 (files :7888)
 ```
 
 Notes:
@@ -47,7 +47,7 @@ Notes:
 - Use `depends_on` with `condition: service_healthy`, so a service starts only after its database, Kafka or RabbitMQ is ready.
 - Use the official images where they exist: `postgres`, `redis`, `apache/kafka` (KRaft mode, no ZooKeeper), `quay.io/debezium/connect`, `rabbitmq:<version>-management`, `opensearchproject/opensearch`, `opensearchproject/opensearch-dashboards`, `axllent/mailpit`, `nginx`, and Kafka UI (`kafbat/kafka-ui`). Pin exact versions. Pick a Debezium version whose docs say it supports your Kafka version.
 - Avoid Bitnami images and charts. Bitnami changed its free image catalog in 2025.
-- MinIO also changed how it distributes the community edition in 2025. Before you pin a MinIO image, check that the version you want is still published. If not, use another S3-compatible store for local work (for example SeaweedFS, Garage, or the S3 service in LocalStack). Your code does not change because it talks the S3 API through `boto3`.
+- MinIO changed how it distributes the community edition in 2025 and no longer publishes images, so the local stack uses **SeaweedFS** for the S3 API (see the decision log in `PLAN.md`). Your code does not change because it talks the S3 API through `boto3`.
 
 ### PostgreSQL setup
 
@@ -349,12 +349,12 @@ A crash can cause a job to be published twice. The worker must therefore be idem
 - **Zero downtime reindex:** create `orders-v2` with the new mapping, copy the data with the Reindex API, then switch the alias in 1 atomic `_aliases` call (remove from v1, add to v2). The app never notices.
 - `GET /api/orders/search?q=` in order-service queries the alias with a timeout and a retry limit.
 
-## 11. Invoices in S3 (MinIO)
+## 11. Invoices in S3 (SeaweedFS locally)
 
 - Bucket: `orderflow-invoices`, created at startup by an init container or a small script. The worker reads the name from `S3_BUCKET`, never from code, because the AWS bucket name is different (Phase 5).
 - Key: `invoices/{yyyy}/{mm}/{order_id}.pdf`.
-- The worker uses `boto3` with `endpoint_url` set to the MinIO address. The same code works on real S3 in Phase 5 by removing the endpoint.
-- Locally, MinIO access keys come from the standard `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` env vars, and `S3_ENDPOINT_URL` points at MinIO. On AWS both are left out and an IAM role is used.
+- The worker uses `boto3` with `endpoint_url` set to the local S3 address. The same code works on real S3 in Phase 5 by removing the endpoint.
+- Locally, the S3 access keys come from the standard `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` env vars, and `S3_ENDPOINT_URL` points at the local S3 store. On AWS both are left out and an IAM role is used.
 
 ## 12. Health checks
 
@@ -386,15 +386,15 @@ Local-only extras (not needed on AWS, or provided by the platform there):
 
 | Env var | Why |
 |---|---|
-| `S3_ENDPOINT_URL` | Points `boto3` at MinIO. Left empty on AWS, so real S3 is used. |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | MinIO credentials, read by `boto3` automatically. On AWS an IAM role replaces them. |
+| `S3_ENDPOINT_URL` | Points `boto3` at the local S3 store (`http://s3:8333` inside Compose). Left empty on AWS, so real S3 is used. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Local S3 credentials, read by `boto3` automatically. On AWS an IAM role replaces them. |
 | `SMTP_HOST`, `SMTP_PORT` | Mailpit |
 | `PAYMENT_FAILURE_RATE`, `PAYMENT_DELAY_MS` | Fake payment provider controls |
 | `HTTP_TIMEOUT_SECONDS`, `MAX_RETRIES` | Timeouts and retry limits |
 
 The Debezium connector credentials (section 3) belong to the Kafka Connect container, not to any service, so they have their own names.
 
-OpenSearch needs an initial admin password from version 2.12 onwards. Put it in `.env` (`OPENSEARCH_INITIAL_ADMIN_PASSWORD`). For local work only, you may turn off the security plugin. Never do this outside your machine.
+OpenSearch needs an initial admin password from version 2.12 onwards when security is on. The local stack turns the security plugin off (plain HTTP, no login) to keep 1 local node simple. Never do this outside your machine; Phase 2 turns security back on.
 
 ## 14. Decisions
 

@@ -83,12 +83,12 @@ Always read the docs for the **exact version you pin**. Section names and settin
 | **RabbitMQ Docs: Reliability Guide** | Whole page | How failures happen and how to survive them |
 | **pika Docs** (or aio-pika) | Blocking connection, channel, `basic_qos` | The Python client |
 
-## S3, MinIO and email (M5)
+## S3 and email (M5)
 
 | Doc | Read these parts | Why |
 |---|---|---|
 | **boto3 Docs: S3 client** | `put_object`, `head_object`, `get_object`; Configuration (`endpoint_url`, timeouts, retries) | Writing invoices |
-| **MinIO Docs** (or the docs of the S3-compatible store you choose) | Container setup; creating buckets | Local S3. See the note on MinIO in [architecture.md](architecture.md). |
+| **SeaweedFS Wiki** (on GitHub) | Running `weed server` with S3, S3 credentials, creating buckets | Local S3. See the note on MinIO in [architecture.md](architecture.md). |
 | **Mailpit Docs** | Docker setup; SMTP settings | A fake inbox so no real email is sent |
 
 ## OpenSearch (M6)

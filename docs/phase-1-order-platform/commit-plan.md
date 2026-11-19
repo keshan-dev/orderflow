@@ -104,7 +104,7 @@ Commit messages, pull request descriptions, code comments and docs contain **no 
 
 **6. `build(compose): add kafka in kraft mode with topic init`**
 - Single-node Kafka (KRaft), a 1-shot init container that creates `orders.events`, `inventory.events`, `payments.events` and their `.retry` and `.dlq` topics.
-- Check: `dc exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list` shows all 9 topics.
+- Check: `dc exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list` shows all 9 topics.
 
 **7. `build(compose): add kafka connect with debezium and kafka ui`**
 - Check: `curl -s localhost:8083/connector-plugins` lists the Debezium Postgres connector; Kafka UI opens on port 8085.
@@ -116,7 +116,7 @@ Commit messages, pull request descriptions, code comments and docs contain **no 
 - Check: `curl -s localhost:9200` (with the admin password from `.env`) returns cluster info; Dashboards opens on port 5601.
 
 **10. `build(compose): add s3 store with invoice bucket init`**
-- MinIO or your chosen S3-compatible store (check image availability first), plus a 1-shot init that creates `orderflow-invoices`.
+- SeaweedFS as the S3-compatible store (MinIO no longer publishes images), plus a 1-shot init that creates `orderflow-invoices`.
 - Check: the bucket is visible in the console.
 
 **11. `build(compose): add mailpit`**

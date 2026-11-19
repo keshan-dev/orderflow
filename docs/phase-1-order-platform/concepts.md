@@ -223,7 +223,7 @@ It allows short bursts (a full bucket) while keeping the average speed limited.
 
 **What it is.** Storage for files ("objects") reached by a bucket name and a key, through an HTTP API. It is cheap and keeps data safe even when servers come and go.
 
-**In OrderFlow.** PDF invoices in the `orderflow-invoices` bucket. MinIO (or another S3-compatible store) locally, real S3 in Phase 5. The code is the same.
+**In OrderFlow.** PDF invoices in the `orderflow-invoices` bucket. SeaweedFS (an S3-compatible store) locally, real S3 in Phase 5. The code is the same.
 
 **Without it.** Files are saved on the container's disk. When the container restarts, they are gone. The other container cannot see them. Saving files inside Postgres instead makes the database large and slow to back up.
 

@@ -14,7 +14,7 @@ A small online ordering system made of 5 services that work together:
 | `notification-worker` | Python | Sends receipt emails (to a fake inbox) and creates PDF invoices |
 | `search-indexer` | Python | Keeps the order search index up to date |
 
-Around them you run the real infrastructure: PostgreSQL, Redis, Kafka, Debezium, RabbitMQ, OpenSearch, MinIO (S3), Mailpit (fake email) and nginx (load balancer).
+Around them you run the real infrastructure: PostgreSQL, Redis, Kafka, Debezium, RabbitMQ, OpenSearch, SeaweedFS (S3), Mailpit (fake email) and nginx (load balancer).
 
 The full design is in [architecture.md](architecture.md). The names used everywhere come from [the common architecture](../common/02-architecture.md).
 
@@ -89,7 +89,7 @@ Useful web UIs while you work:
 | http://localhost:8085 | Kafka UI: topics, messages, consumer lag |
 | http://localhost:15672 | RabbitMQ management |
 | http://localhost:5601 | OpenSearch Dashboards |
-| http://localhost:9001 | MinIO console (see the invoice PDFs) |
+| http://localhost:7888/buckets/ | S3 file browser (see the invoice PDFs) |
 | http://localhost:8025 | Mailpit inbox (see the receipt emails) |
 
 ## Done checklist
@@ -102,7 +102,7 @@ Phase 1 is done when every line is true and you have shown it working, not just 
 - [ ] A failed payment releases the stock and ends `CANCELLED`.
 - [ ] Sending the same `POST /api/orders` twice with the same `Idempotency-Key` creates only 1 order.
 - [ ] Sending the same Kafka event twice changes nothing the second time.
-- [ ] A confirmed order produces 1 email in Mailpit and 1 PDF in MinIO.
+- [ ] A confirmed order produces 1 email in Mailpit and 1 PDF in the S3 bucket.
 - [ ] `GET /api/orders/search?q=` finds orders, and a reindex to `orders-v2` works with no downtime.
 - [ ] Killing 1 of the 2 order-service containers does not stop the API.
 - [ ] The rate limit returns `429` when a client sends too many requests.

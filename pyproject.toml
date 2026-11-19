@@ -4,10 +4,12 @@
 [tool.uv.workspace]
 members = [
     "libs/orderflow-common",
+    "services/inventory-service",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.16.2",
     "pytest>=8.4",
     "ruff>=0.14",
 ]

@@ -293,10 +293,17 @@ orders.events --> consumer
           publish to orders.events.dlq  (kept for a person to look at)
 ```
 
-- Only send a message to the retry topic for **temporary** errors (timeouts, connection refused). A **permanent** error (bad JSON, unknown event type) goes straight to `.dlq`. Retrying it would never work.
-- The original offset is committed only after the message is either processed, or safely written to `.retry` or `.dlq`.
+- Only send a message to the retry topic for **temporary** errors (timeouts, connection refused). A **permanent** error (bad JSON, `PermanentError`) goes straight to `.dlq`. Retrying it would never work.
+- The original offset is committed only after the message is either processed, or the broker confirmed it in `.retry` or `.dlq`. If even that write fails, the consumer reads the same message again later: it is never skipped.
 - Note: moving a message to the retry topic means it can be processed after newer events for the same order. The saga rule "only move forward from the expected state" (section 2) protects against this.
-- Look at `.dlq` messages in Kafka UI. A small script can replay a fixed message back to the main topic after you fix the bug.
+
+How it is built (`libs/orderflow-common/.../kafka.py` and `deadletter.py`, and the same design in Go in `services/payment-service/internal/kafka/`):
+
+- **Delays:** attempt 1 to 5 wait 2, 4, 8, 16 and 32 seconds. After attempt 5 the message goes to `.dlq`.
+- **A separate retry consumer:** each service runs a second consumer on `<topic>.retry` in its own group, `<group>.retry`. It can wait for a message to be due without ever blocking the main topic.
+- **The failing group travels with the message.** Several groups read the same topic (`orders.events` has 4), so every retry and dead letter message has headers `x-consumer-group`, `x-original-topic`, `x-attempt`, `x-error` and `x-next-try-at-ms`. A group skips retries that belong to another group.
+- **Replay after a fix:** `python -m orderflow_common.replay_kafka_dlq orders.events --group inventory-service` (inside any Python service container). It sends that group's dead letters back through `.retry` with attempt 0, so only the group that failed handles them again. Each group has its own replay position, so a message is replayed once.
+- **search-indexer** (batch consumer) retries a failed batch in place, because its failures are almost always "OpenSearch is down" for the whole batch; documents OpenSearch rejects for good, and malformed messages, go to `orders.events.dlq`.
 
 ## 8. Jobs and dead letters in RabbitMQ
 

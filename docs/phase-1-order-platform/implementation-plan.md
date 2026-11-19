@@ -309,11 +309,17 @@ Automated in `tests/e2e/test_lb_m7.py`; measured numbers are in [results/phase-1
 **How to test**
 
 ```bash
-./chaos/phase1-kill-random.sh &      # chaos in the background
-k6 run loadtest/phase1-orders.js
-kill %1                              # stop chaos
-# wait for the saga timeouts to pass, then:
-dc run --rm reconcile
+# 1 round by hand:
+bash chaos/phase1-kill-random.sh 180 chaos.log &       # chaos in the background
+k6 run -e VUS=8 -e DURATION=180s loadtest/phase1-orders.js
+wait                                                    # chaos stops by itself
+dc --profile tools run --rm reconcile                   # when no order is in progress
+
+# Or the whole "done when" (3 rounds, results saved in results/phase-1/):
+bash chaos/phase1-verify.sh 3 180
+
+# Replay Kafka dead letters of 1 group after fixing the cause:
+dc exec order-service-1 python -m orderflow_common.replay_kafka_dlq orders.events --group inventory-service
 ```
 
 **Done when.** The reconcile job passes after a load test with chaos running, at least 3 times in a row. Any failure is investigated and its cause written down, not hidden.

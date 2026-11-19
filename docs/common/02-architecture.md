@@ -117,6 +117,8 @@ Message key: the `order_id`, so all events for 1 order go to the same partition 
 
 Consumer group ids are the service names: `order-service`, `inventory-service`, `payment-service`, `search-indexer`. There is 1 extra group, `order-service-jobs`, which reads `OrderConfirmed` and creates the RabbitMQ jobs. Phase 2 (KEDA lag scaling) uses the same ids.
 
+Each group (except search-indexer) also has a retry group, `<group>.retry`, that reads `<topic>.retry`. Retry and dead letter messages carry the failing group in the `x-consumer-group` header, so groups that share a topic never handle each other's retries.
+
 Every event has the same envelope:
 
 ```json

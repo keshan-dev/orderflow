@@ -1,0 +1,29 @@
+# uv workspace root. Each Python service and library is a member with its own pyproject.toml.
+# 1 lock file (uv.lock) pins every Python dependency for the whole repo.
+
+[tool.uv.workspace]
+members = [
+    "libs/orderflow-common",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "ruff>=0.14",
+]
+
+[tool.ruff]
+line-length = 100
+# Lets ruff treat our own packages as first-party when sorting imports.
+src = ["libs/*/src", "services/*/src", "services/*/tests"]
+target-version = "py313"
+
+[tool.ruff.format]
+# Code snippets in the docs are illustrative; do not reformat them.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+addopts = "-q"

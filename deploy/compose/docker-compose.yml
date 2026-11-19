@@ -308,6 +308,8 @@ services:
       DATABASE_URL: postgresql://orders_user:${ORDERS_DB_PASSWORD}@postgres:5432/orders_db
       REDIS_URL: redis://redis:6379/0
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      PAYMENT_TIMEOUT_SECONDS: ${PAYMENT_TIMEOUT_SECONDS:-120}
+      TIMEOUT_CHECK_SECONDS: ${TIMEOUT_CHECK_SECONDS:-10}
     ports:
       - "8001:8001"
     depends_on:

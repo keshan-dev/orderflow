@@ -232,7 +232,15 @@ services:
     depends_on:
       s3:
         condition: service_healthy
-    entrypoint: ["/bin/sh", "-c", "echo 's3.bucket.create -name orderflow-invoices' | weed shell -master=s3:9333 && echo 's3.bucket.list' | weed shell -master=s3:9333"]
+    # Safe to run again: creates the bucket only if it is not listed yet.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        if echo 's3.bucket.list' | weed shell -master=s3:9333 | grep -q 'orderflow-invoices';
+        then echo 'bucket orderflow-invoices already exists';
+        else echo 's3.bucket.create -name orderflow-invoices' | weed shell -master=s3:9333;
+        fi
     mem_limit: 128m
     restart: "no"
 

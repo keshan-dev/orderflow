@@ -339,8 +339,47 @@ services:
         condition: service_completed_successfully
       inventory-migrate:
         condition: service_completed_successfully
+      payment-migrate:
+        condition: service_completed_successfully
     mem_limit: 128m
     restart: "no"
+
+  payment-migrate:
+    image: orderflow/payment-service:dev
+    build:
+      context: ../..
+      dockerfile: services/payment-service/Dockerfile
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgresql://payments_user:${PAYMENTS_DB_PASSWORD}@postgres:5432/payments_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 64m
+    restart: "no"
+
+  payment-service:
+    image: orderflow/payment-service:dev
+    environment:
+      DATABASE_URL: postgresql://payments_user:${PAYMENTS_DB_PASSWORD}@postgres:5432/payments_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      # Fake provider controls: share of declined charges (0 to 1) and delay per call.
+      PAYMENT_FAILURE_RATE: ${PAYMENT_FAILURE_RATE:-0}
+      PAYMENT_DELAY_MS: ${PAYMENT_DELAY_MS:-50}
+    ports:
+      - "8003:8003"
+    depends_on:
+      payment-migrate:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/payment-service", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 64m
+    restart: unless-stopped
 
 volumes:
   postgres-data:

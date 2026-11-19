@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from order_service.config import Settings
 from order_service.handlers import SagaHandler
 from order_service.idempotency import Begin, IdempotencyStore
+from order_service.job_events import JobsFromEvents
+from order_service.jobs import make_job_publisher
 from order_service.orders import NewOrder, create_order, get_order
 from order_service.timeouts import cancel_timed_out_orders
 from orderflow_common.background import PeriodicTask
@@ -53,6 +55,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             SagaHandler(app.state.engine),
         )
         app.state.saga_consumer.start()
+        # Fails at startup for an unknown JOB_BACKEND, before any traffic is accepted.
+        publisher = make_job_publisher(cfg.job_backend, cfg.rabbitmq_url)
+        app.state.jobs_consumer = EventConsumer(
+            cfg.kafka_bootstrap_servers,
+            "order-service-jobs",
+            ["orders.events"],
+            JobsFromEvents(publisher),
+        )
+        app.state.jobs_consumer.start()
         timeouts = PeriodicTask(
             "payment-timeouts",
             cfg.timeout_check_seconds,
@@ -62,6 +73,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("order-service started")
         yield
         timeouts.stop()
+        app.state.jobs_consumer.stop()
+        publisher.close()
         app.state.saga_consumer.stop()
         app.state.redis.close()
         app.state.engine.dispose()
@@ -126,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "postgres": postgres_ok(app.state.engine),
             "redis": redis_ok(app.state.redis),
             "saga_consumer": app.state.saga_consumer.healthy,
+            "jobs_consumer": app.state.jobs_consumer.healthy,
         }
         if not all(checks.values()):
             response.status_code = 503

@@ -4,21 +4,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from order_service.api import create_app
-from order_service.config import Settings
-
-# Unreachable on purpose: these tests must never join the Compose consumer groups.
-NO_KAFKA = "127.0.0.1:1"
 
 
 @pytest.fixture
-def client(engine, redis_client, database_url, redis_url):
-    with TestClient(
-        create_app(
-            Settings(
-                database_url=database_url, redis_url=redis_url, kafka_bootstrap_servers=NO_KAFKA
-            )
-        )
-    ) as c:
+def client(engine, redis_client, app_settings):
+    with TestClient(create_app(app_settings)) as c:
         yield c
 
 

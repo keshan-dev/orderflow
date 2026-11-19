@@ -6,6 +6,7 @@ import pathlib
 import pytest
 from sqlalchemy import text
 
+from order_service.config import Settings
 from orderflow_common import testing
 from orderflow_common.connections import make_engine, make_redis
 
@@ -43,3 +44,15 @@ def redis_client(redis_url):
     client.flushdb()
     yield client
     client.close()
+
+
+@pytest.fixture
+def app_settings(database_url, redis_url) -> Settings:
+    """Real Postgres and Redis. Kafka and RabbitMQ are unreachable on purpose, so app tests
+    never join the consumer groups or queues of the running Compose services."""
+    return Settings(
+        database_url=database_url,
+        redis_url=redis_url,
+        kafka_bootstrap_servers="127.0.0.1:1",
+        rabbitmq_url="amqp://x:y@127.0.0.1:1/%2F",
+    )

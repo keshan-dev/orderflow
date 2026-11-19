@@ -7,6 +7,7 @@ UNREACHABLE = Settings(
     database_url="postgresql://x:y@127.0.0.1:1/none",
     redis_url="redis://127.0.0.1:1/0",
     kafka_bootstrap_servers="127.0.0.1:1",
+    rabbitmq_url="amqp://x:y@127.0.0.1:1/%2F",
 )
 
 
@@ -19,4 +20,21 @@ def test_readyz_is_503_when_dependencies_are_down():
     with TestClient(create_app(UNREACHABLE)) as client:
         response = client.get("/readyz")
     assert response.status_code == 503
-    assert response.json() == {"postgres": False, "redis": False, "saga_consumer": True}
+    assert response.json() == {
+        "postgres": False,
+        "redis": False,
+        "saga_consumer": True,
+        "jobs_consumer": True,
+    }
+
+
+def test_unknown_job_backend_stops_startup():
+    import dataclasses
+
+    import pytest
+
+    from order_service.jobs import UnsupportedJobBackendError
+
+    settings = dataclasses.replace(UNREACHABLE, job_backend="carrier-pigeon")
+    with pytest.raises(UnsupportedJobBackendError), TestClient(create_app(settings)):
+        pass

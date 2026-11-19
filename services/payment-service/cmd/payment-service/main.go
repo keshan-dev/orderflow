@@ -14,6 +14,9 @@ import (
 	"github.com/keshan-dev/orderflow/services/payment-service/internal/config"
 	"github.com/keshan-dev/orderflow/services/payment-service/internal/db"
 	"github.com/keshan-dev/orderflow/services/payment-service/internal/httpapi"
+	"github.com/keshan-dev/orderflow/services/payment-service/internal/kafka"
+	"github.com/keshan-dev/orderflow/services/payment-service/internal/payments"
+	"github.com/keshan-dev/orderflow/services/payment-service/internal/provider"
 )
 
 func main() {
@@ -48,10 +51,28 @@ func run() error {
 	}
 	defer pool.Close()
 
+	fake := provider.NewFake(cfg.FailureRate, cfg.ProviderDelay)
+	service := payments.New(pool, fake, cfg.ProviderTimeout, cfg.ProviderAttempts)
+	consumer, err := kafka.New(cfg.KafkaBrokers, "payment-service", []string{"orders.events"}, service.Handle)
+	if err != nil {
+		return err
+	}
+	consumerDone := make(chan struct{})
+	go func() {
+		defer close(consumerDone)
+		consumer.Run(ctx)
+	}()
+	slog.Info("payment-service started",
+		"failure_rate", cfg.FailureRate, "provider_delay", cfg.ProviderDelay.String())
+
 	server := httpapi.NewServer(cfg.HTTPAddr, map[string]httpapi.Check{
 		"postgres": func(ctx context.Context) bool { return pool.Ping(ctx) == nil },
+		"consumer": consumer.Healthy,
 	})
-	return serve(ctx, server)
+	err = serve(ctx, server)
+	stop()
+	<-consumerDone
+	return err
 }
 
 // serve runs the HTTP server until ctx is cancelled, then shuts it down gracefully.

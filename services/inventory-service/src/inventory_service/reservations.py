@@ -88,6 +88,10 @@ class Reservations:
         self._gate = gate
         self._hold_ttl_seconds = hold_ttl_seconds
 
+    @property
+    def engine(self) -> Engine:
+        return self._engine
+
     def reserve(
         self,
         order_id: uuid.UUID,

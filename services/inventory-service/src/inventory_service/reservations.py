@@ -151,6 +151,22 @@ class Reservations:
             self._give_back_safely(order_id, _items(result.lines))
         return result
 
+    def commit(self, order_id: uuid.UUID, *, guard: Guard | None = None) -> bool:
+        """The order is paid: its stock is sold for good and the sweeper must never release it.
+        Returns True if a HELD reservation became COMMITTED."""
+        with self._engine.begin() as conn:
+            if guard is not None and not guard(conn):
+                return False
+            committed = conn.execute(
+                update(reservations)
+                .where(reservations.c.order_id == order_id, reservations.c.status == "HELD")
+                .values(status="COMMITTED", updated_at=func.now())
+                .returning(reservations.c.order_id)
+            ).first()
+        if committed is not None:
+            self._gate.forget_hold(order_id)
+        return committed is not None
+
     def release_expired(self, limit: int = 50, on_result: OnRelease | None = None) -> int:
         """Release HELD reservations whose time is up. Returns how many were released.
 

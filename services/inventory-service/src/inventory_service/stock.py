@@ -6,6 +6,7 @@ system can refuse a sale by mistake but can never oversell. A resync fixes the d
 """
 
 import json
+import logging
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ import redis
 from sqlalchemy import Engine, select
 
 from inventory_service.schema import stock
+
+log = logging.getLogger(__name__)
 
 
 class InvalidItemsError(ValueError):
@@ -63,6 +66,7 @@ class RedisStock:
     """The Lua scripts that change stock:{product_id} and hold:{order_id} keys atomically."""
 
     def __init__(self, client: redis.Redis) -> None:
+        self._client = client
         self._reserve = client.register_script(_lua("reserve.lua"))
         self._release = client.register_script(_lua("release.lua"))
 
@@ -70,6 +74,14 @@ class RedisStock:
         keys = [stock_key(i.product_id) for i in items] + [hold_key(order_id)]
         args = [i.quantity for i in items] + [json.dumps(items_to_dicts(items)), ttl_seconds]
         return RedisReserve(int(self._reserve(keys=keys, args=args)))
+
+    def forget_hold(self, order_id: uuid.UUID) -> None:
+        """Remove the hold key of a sold order. The stock itself stays taken."""
+        try:
+            self._client.delete(hold_key(order_id))
+        except redis.RedisError:
+            # Not harmful: the key expires on its own and nothing reads it after the sale.
+            log.warning("could not delete hold key of a sold order", exc_info=True)
 
     def give_back(self, order_id: uuid.UUID, items: list[Item]) -> None:
         keys = [stock_key(i.product_id) for i in items] + [hold_key(order_id)]

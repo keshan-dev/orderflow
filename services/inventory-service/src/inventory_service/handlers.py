@@ -9,7 +9,14 @@ from collections.abc import Callable
 
 from sqlalchemy import Connection
 
-from inventory_service.reservations import Line, Outcome, Reservations, ReserveResult
+from inventory_service.reservations import (
+    Line,
+    Outcome,
+    ReleaseOutcome,
+    ReleaseResult,
+    Reservations,
+    ReserveResult,
+)
 from inventory_service.stock import InvalidItemsError, normalize_items
 from orderflow_common.events import Event, first_time, write_outbox
 
@@ -27,6 +34,8 @@ class InventoryEventHandler:
         self._reservations = reservations
         self._routes: dict[str, Callable[[Event], None]] = {
             "OrderCreated": self._order_created,
+            "OrderConfirmed": self._order_confirmed,
+            "ReleaseStockRequested": self._release_requested,
         }
 
     def __call__(self, event: Event) -> None:
@@ -55,6 +64,33 @@ class InventoryEventHandler:
         log.info(
             "order created handled", extra={"outcome": result.outcome, "reason": result.reason}
         )
+
+    def _order_confirmed(self, event: Event) -> None:
+        def guard(conn: Connection) -> bool:
+            return first_time(conn, event.event_id)
+
+        if self._reservations.commit(event.order_id, guard=guard):
+            log.info("reservation committed: stock sold")
+
+    def _release_requested(self, event: Event) -> None:
+        def guard(conn: Connection) -> bool:
+            return first_time(conn, event.event_id)
+
+        result = self._reservations.release(event.order_id, guard=guard, on_result=write_released)
+        log.info("stock release handled", extra={"outcome": result.outcome})
+
+
+def write_released(conn: Connection, result: ReleaseResult) -> None:
+    """Tell order-service the stock is back. Sent again for an already released order, so a
+    repeated request still gets an answer; order-service ignores the extra one."""
+    if result.outcome not in (ReleaseOutcome.RELEASED, ReleaseOutcome.ALREADY_RELEASED):
+        if result.outcome is not ReleaseOutcome.DUPLICATE:
+            log.warning(
+                "release requested but nothing to release", extra={"outcome": result.outcome}
+            )
+        return
+    payload = {"reason": result.reason, "lines": [line.as_dict() for line in result.lines]}
+    write_outbox(conn, AGGREGATE, Event("StockReleased", result.order_id, payload))
 
 
 def reserve_reply(result: ReserveResult) -> Event:

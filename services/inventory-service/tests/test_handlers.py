@@ -70,3 +70,58 @@ def test_invalid_items_reply_stock_rejected(handler, engine):
 def test_other_event_types_are_ignored(handler, engine):
     handler(Event("SomethingElse", uuid.uuid4(), {}))
     assert outbox(engine) == []
+
+
+def event_types(engine) -> list[str]:
+    return [e.event_type for e in outbox(engine)]
+
+
+def test_release_requested_returns_stock_and_replies(handler, engine):
+    created = order_created(3)
+    handler(created)
+    handler(Event("ReleaseStockRequested", created.order_id, {}))
+    assert event_types(engine) == ["StockReserved", "StockReleased"]
+    assert lamp_stock(engine) == LAMP.stock
+
+
+def test_repeated_release_request_still_gets_an_answer_but_stock_moves_once(handler, engine):
+    created = order_created(3)
+    handler(created)
+    handler(Event("ReleaseStockRequested", created.order_id, {}))
+    handler(Event("ReleaseStockRequested", created.order_id, {}))  # a new request
+    assert event_types(engine) == ["StockReserved", "StockReleased", "StockReleased"]
+    assert lamp_stock(engine) == LAMP.stock
+
+
+def test_order_confirmed_commits_so_the_sweeper_never_returns_sold_stock(handler, engine):
+    from datetime import timedelta
+
+    from sqlalchemy import func, update
+
+    from inventory_service.schema import reservations
+    from inventory_service.sweeper import Sweeper
+
+    created = order_created(2)
+    handler(created)
+    handler(Event("OrderConfirmed", created.order_id, {}))
+    with engine.begin() as conn:
+        conn.execute(update(reservations).values(expires_at=func.now() - timedelta(seconds=1)))
+    assert Sweeper(handler._reservations, interval_seconds=60).sweep_once() == 0
+    assert lamp_stock(engine) == LAMP.stock - 2
+
+
+def test_sweeper_tells_order_service_about_expired_holds(handler, engine):
+    from datetime import timedelta
+
+    from sqlalchemy import func, update
+
+    from inventory_service.handlers import write_released
+    from inventory_service.schema import reservations
+    from inventory_service.sweeper import Sweeper
+
+    handler(order_created(1))
+    with engine.begin() as conn:
+        conn.execute(update(reservations).values(expires_at=func.now() - timedelta(seconds=1)))
+    Sweeper(handler._reservations, 60, on_result=write_released).sweep_once()
+    released = outbox(engine)[-1]
+    assert (released.event_type, released.payload["reason"]) == ("StockReleased", "expired")

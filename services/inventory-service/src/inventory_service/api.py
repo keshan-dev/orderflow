@@ -9,7 +9,7 @@ from fastapi import FastAPI, Response
 
 from inventory_service.catalog import list_products
 from inventory_service.config import Settings
-from inventory_service.handlers import InventoryEventHandler
+from inventory_service.handlers import InventoryEventHandler, write_released
 from inventory_service.reservations import Reservations
 from inventory_service.stock import RedisStock, load_stock_into_redis
 from inventory_service.sweeper import Sweeper
@@ -48,7 +48,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.reservations = Reservations(
             app.state.engine, RedisStock(app.state.redis), cfg.hold_ttl_seconds
         )
-        sweeper = Sweeper(app.state.reservations, cfg.sweeper_interval_seconds)
+        sweeper = Sweeper(
+            app.state.reservations, cfg.sweeper_interval_seconds, on_result=write_released
+        )
         sweeper.start()
         app.state.consumer = EventConsumer(
             cfg.kafka_bootstrap_servers,

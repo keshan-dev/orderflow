@@ -25,7 +25,15 @@ put_connector() {
   return 1
 }
 
-for file in /connectors/*.json; do
+# An empty folder means the mount failed. Without this check the loop would run once
+# with the literal pattern and the stack would start with no CDC at all.
+set -- /connectors/*.json
+if [ ! -f "$1" ]; then
+  echo "no connector files in /connectors, is the folder mounted?"
+  exit 1
+fi
+
+for file in "$@"; do
   name=$(basename "$file" .json)
   put_connector "$name" "$file"
 done

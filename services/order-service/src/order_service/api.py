@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Header, HTTPException, Query, Response
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from opensearchpy.exceptions import OpenSearchException
 from pydantic import BaseModel, Field
@@ -17,6 +17,7 @@ from order_service.idempotency import Begin, IdempotencyStore
 from order_service.job_events import JobsFromEvents
 from order_service.jobs import make_job_publisher
 from order_service.orders import NewOrder, create_order, get_order
+from order_service.ratelimit import RateLimiter, client_id
 from order_service.search import make_search_client, search_orders
 from order_service.timeouts import cancel_timed_out_orders
 from orderflow_common.background import PeriodicTask
@@ -51,6 +52,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.redis = make_redis(cfg.redis_url)
         app.state.idempotency = IdempotencyStore(app.state.redis)
         app.state.search = make_search_client(cfg.opensearch_url)
+        app.state.rate_limiter = RateLimiter(
+            app.state.redis, cfg.rate_limit_capacity, cfg.rate_limit_per_second
+        )
         app.state.saga_consumer = EventConsumer(
             cfg.kafka_bootstrap_servers,
             "order-service",
@@ -93,8 +97,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/orders", status_code=202)
     def post_order(
         body: CreateOrderIn,
+        request: Request,
         idempotency_key: Annotated[str | None, Header()] = None,
     ) -> JSONResponse:
+        caller = client_id(dict(request.headers), request.client.host if request.client else None)
+        decision = app.state.rate_limiter.check(caller)
+        if not decision.allowed:
+            log.info("rate limited", extra={"client": caller})
+            raise HTTPException(
+                429,
+                "too many orders, slow down",
+                {"Retry-After": str(decision.retry_after_seconds)},
+            )
         if not idempotency_key or len(idempotency_key) > MAX_KEY_LENGTH:
             raise HTTPException(
                 400, f"Idempotency-Key header is required (1 to {MAX_KEY_LENGTH} chars)"

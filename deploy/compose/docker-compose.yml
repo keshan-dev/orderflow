@@ -332,6 +332,35 @@ services:
     mem_limit: 192m
     restart: unless-stopped
 
+  order-service-2:
+    # Second copy of order-service, same image. Only nginx reaches it (no host port).
+    image: orderflow/order-service:dev
+    environment:
+      DATABASE_URL: postgresql://orders_user:${ORDERS_DB_PASSWORD}@postgres:5432/orders_db
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      JOB_BACKEND: rabbitmq
+      OPENSEARCH_URL: http://opensearch:9200
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2F
+      PAYMENT_TIMEOUT_SECONDS: ${PAYMENT_TIMEOUT_SECONDS:-120}
+      TIMEOUT_CHECK_SECONDS: ${TIMEOUT_CHECK_SECONDS:-10}
+    depends_on:
+      order-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/readyz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 192m
+    restart: unless-stopped
+
   debezium-init:
     image: quay.io/debezium/connect:3.7.1.Final
     # 1-shot: registers the outbox connectors once Kafka Connect and the outbox tables exist.

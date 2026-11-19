@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Products and stock for OrderFlow. Reserves and releases stock safely under load."
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.16",
     "fastapi>=0.120",
     "orderflow-common",
     "uvicorn>=0.38",

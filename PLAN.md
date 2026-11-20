@@ -10,8 +10,8 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 
 | Phase | Name | Status |
 |---|---|---|
-| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress (M0 to M7 done) |
-| 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | Not started |
+| 1 | [Order platform](docs/phase-1-order-platform/README.md) | In progress: M0 to M8 built; the M8 verification found 2 open bugs (see decision log) |
+| 2 | [GitOps and observability](docs/phase-2-gitops-observability/README.md) | In progress (started before Phase 1 was done, see decision log) |
 | 3 | [Kubernetes operator](docs/phase-3-kubernetes-operator/README.md) | Not started |
 | 4 | [eBPF security agent](docs/phase-4-ebpf-security-agent/README.md) | Not started |
 | 5 | [AWS with Terraform](docs/phase-5-aws-terraform/README.md) | Not started, needs a written AWS budget first |
@@ -57,3 +57,7 @@ Build, deploy, observe, secure and run on AWS a small event-driven ordering syst
 | 2026-11-19 | Keshan | Lesson from reconcile: a consumer that skips event types it does not handle yet commits them, so a later version with the handler never sees them. 19 orders were charged and then cancelled without a refund because of this during development | When a handler is added for an event type that already flows, the missed events must be replayed on purpose |
 | 2026-11-19 | Keshan | The first M8 verification round failed: all 4504 orders stayed PENDING because no Debezium connector was registered. `down -v` had removed the stored connectors and debezium-init found an empty connectors folder, retried a literal `*` 20 times and exited 1 unnoticed. The register script now fails at once on an empty folder, and `phase1-verify.sh` stops before any load unless every outbox connector is RUNNING | A broken setup must fail in seconds, not after a 20 minute run |
 | 2026-11-19 | Keshan | The Postgres healthcheck runs `pg_isready` over TCP | On a first start the init scripts run on a socket-only temporary server that restarts afterwards; a socket check called it healthy early and payment-migrate hit the restart |
+| 2026-11-19 | Keshan | `phase1-verify.sh` stops when k6 is missing, when k6 fails a threshold, or when a round creates no orders | A run without k6 "passed" 3 rounds while checking an idle system |
+| 2026-11-19 | Keshan | Open bug found by M8 round 1: a Kafka broker stall (about 10 s, 19:59 UTC) left inventory-service's consumer blocked in a synchronous offset commit with no timeout. It never recovered: 3892 orders stayed in progress. Planned fix: `store_offsets` with background commits, and a watchdog that exits the process when the consumer is stuck so Docker restarts it | 1 broker hiccup must not stop a service for good, and an unhealthy container must not stay unhealthy |
+| 2026-11-19 | Keshan | Open bug found by M8 round 1: the inventory sweeper released 136 holds of orders that were already paid, because the OrderConfirmed events were still waiting in Kafka. `commit()` only accepts a HELD reservation, so that stock stayed for sale. Planned fix: on OrderConfirmed for a released hold, take the stock again; if it is gone, inventory sends an event and order-service cancels and refunds | Any long consumer delay can otherwise sell paid stock twice |
+| 2026-11-19 | Keshan | Merge M8 with the 2 bugs open and start Phase 2 before Phase 1 is done. Phase 1 gets its `phase1-done` tag only after both fixes and 3 passing rounds | M8 did not cause the bugs (they are in M1 and M3 code), it is the tooling that found them; Phase 2 should start from the latest code |

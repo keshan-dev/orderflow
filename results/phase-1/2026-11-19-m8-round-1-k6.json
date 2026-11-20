@@ -1,0 +1,156 @@
+{
+    "root_group": {
+        "groups": {},
+        "checks": {
+            "order accepted (202)": {
+                "name": "order accepted (202)",
+                "path": "::order accepted (202)",
+                "id": "cb5a16d878a8ea1af6ee4b25eaa5a3ad",
+                "passes": 4093,
+                "fails": 17
+            }
+        },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "metrics": {
+        "orders_accepted": {
+            "count": 4093,
+            "rate": 22.69120629393146
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 96.4915032135685,
+            "min": 1.5968,
+            "med": 17.6429,
+            "max": 9746.6859,
+            "p(90)": 119.8885,
+            "p(95)": 261.461
+        },
+        "http_reqs": {
+            "count": 4499,
+            "rate": 24.942032034301892
+        },
+        "vus": {
+            "min": 8,
+            "max": 8,
+            "value": 8
+        },
+        "http_req_sending": {
+            "avg": 0.07310602356079124,
+            "min": 0,
+            "med": 0,
+            "max": 37.609,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_failed": {
+            "passes": 18,
+            "fails": 4481,
+            "value": 0.004000889086463659
+        },
+        "http_req_connecting": {
+            "avg": 0.029927272727272726,
+            "min": 0,
+            "med": 0,
+            "max": 30.4989,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_waiting": {
+            "p(95)": 282.8445,
+            "avg": 135.97793763058516,
+            "min": 1.5968,
+            "med": 17.6313,
+            "max": 10336.2263,
+            "p(90)": 126.71974000000021
+        },
+        "iterations": {
+            "count": 4110,
+            "rate": 22.78545269192727
+        },
+        "repeats_same_order": {
+            "count": 387,
+            "rate": 2.1454915308457063
+        },
+        "http_req_duration": {
+            "max": 10336.2263,
+            "p(90)": 126.82880000000036,
+            "p(95)": 287.1819399999997,
+            "avg": 136.38121420315613,
+            "min": 1.5968,
+            "med": 17.7019
+        },
+        "data_received": {
+            "count": 1312099,
+            "rate": 7274.153209641138
+        },
+        "http_req_receiving": {
+            "max": 182.3815,
+            "p(90)": 0.5276,
+            "p(95)": 0.5719099999999988,
+            "avg": 0.3301705490108912,
+            "min": 0,
+            "med": 0
+        },
+        "data_sent": {
+            "count": 1406996,
+            "rate": 7800.253234971022
+        },
+        "http_req_tls_handshaking": {
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0
+        },
+        "repeats_different_order": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count==0": false
+            }
+        },
+        "iteration_duration": {
+            "max": 12516.059,
+            "p(90)": 348.5996399999999,
+            "p(95)": 554.3282599999994,
+            "avg": 350.3702355474449,
+            "min": 205.3254,
+            "med": 220.6647
+        },
+        "vus_max": {
+            "value": 8,
+            "min": 8,
+            "max": 8
+        },
+        "checks": {
+            "passes": 4093,
+            "fails": 17,
+            "thresholds": {
+                "rate>0.98": false
+            },
+            "value": 0.9958637469586374
+        },
+        "http_req_blocked": {
+            "min": 0,
+            "med": 0,
+            "max": 62.3531,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.07483831962658367
+        }
+    },
+    "setup_data": {
+        "products": [
+            "7b324c45-4b1d-57a1-bb7f-6d25a6227f15",
+            "08d3355e-c507-545d-a6bd-a1f7715e516a",
+            "f350b8b0-9425-5007-8db8-83971fdb17bc",
+            "828f2a4e-7d0f-508c-a0ed-1a65b8c98b5b",
+            "f6b8fd30-1e8d-5602-a4e3-aa16b1693afd",
+            "9f04351c-465d-56cd-a80f-196688f1e1dd",
+            "5896f4e4-4935-538a-841b-32aabee26f07"
+        ]
+    }
+}

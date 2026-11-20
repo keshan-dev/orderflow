@@ -24,3 +24,12 @@ Machine: Windows 11, 16 logical CPUs, 7.7 GB RAM, Docker Desktop with about 3.9 
 - Setup: limit of a burst of 20, then 10 per second, per client, in Redis.
 - Load: k6, 20 virtual users, 100 `POST /api/orders` with the same `X-Client-Id`, through nginx.
 - Result: about 22 accepted (202) and 78 limited (429): 39 by order-service-1 and 39 by order-service-2.
+
+## M8: load and chaos verification, round 1 FAILED (2026-11-19)
+
+- Setup: all services in Compose, payment-service declining 20% of charges, `bash chaos/phase1-verify.sh 3 180`.
+- Load: k6, 8 virtual users, 180 seconds, `loadtest/phase1-orders.js` through nginx, while `chaos/phase1-kill-random.sh` paused or killed random services 9 times.
+- k6: 4093 orders accepted, 99.58% of checks passed (threshold 98%), 0 repeated keys created a second order, 0.40% failed requests.
+- Reconcile: 6 of 8 checks passed. Failed: "no order is stuck" (3892 orders still in progress after 15 minutes) and "reservations match orders" (136 paid orders with released stock).
+- Causes: 2 open bugs, described in the decision log of `PLAN.md`. Rounds 2 and 3 did not run.
+- Raw files: [k6 summary](2026-11-19-m8-round-1-k6.txt), [k6 JSON](2026-11-19-m8-round-1-k6.json), [chaos log](2026-11-19-m8-round-1-chaos.log), [reconcile output](2026-11-19-m8-round-1-reconcile.txt)

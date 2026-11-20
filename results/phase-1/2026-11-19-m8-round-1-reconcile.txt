@@ -1,0 +1,13 @@
+ Container orderflow-reconcile-run-0d592a68f343 Creating
+ Container orderflow-reconcile-run-0d592a68f343 Created
+{"ts": "2026-11-19T20:19:06.744+00:00", "level": "info", "service": "reconcile", "logger": "botocore.credentials", "msg": "Found credentials in environment variables."}
+{"totals": {"orders": 4105, "confirmed": 179, "cancelled": 34, "payments": 213}}
+{"check": "confirmed orders are paid exactly once", "ok": true, "checked": 179, "problems": 0, "examples": []}
+{"check": "no order is charged twice", "ok": true, "checked": 213, "problems": 0, "examples": []}
+{"check": "cancelled orders keep no money", "ok": true, "checked": 34, "problems": 0, "examples": []}
+{"check": "no order is stuck", "ok": false, "checked": 4105, "problems": 3892, "examples": ["4563ccc0-d89e-463d-ac18-13b16b370fa9: PENDING since 2026-11-19T20:00:04.424036+00:00", "55f6380d-746e-425d-b4fc-31b7de577422: PENDING since 2026-11-19T20:00:04.685847+00:00", "59ce7b8b-9322-41a5-9b7a-3006c8e60224: PENDING since 2026-11-19T20:00:04.921383+00:00", "0f38f84b-0666-4b8c-b8ff-38c877d8818a: PENDING since 2026-11-19T20:00:05.133584+00:00", "4520091f-ed86-4621-a1a3-ccd38963e157: PENDING since 2026-11-19T20:00:05.525858+00:00"]}
+{"check": "reservations match orders", "ok": false, "checked": 213, "problems": 136, "examples": ["bbca3253-8483-4cc8-8134-bfb9fbdf6314: order CONFIRMED, stock RELEASED", "c44b593f-023e-48a0-88df-f33c3c34c8c1: order CONFIRMED, stock RELEASED", "bc4fbc28-a0b2-4bd2-a518-5f4bd410a0c0: order CONFIRMED, stock RELEASED", "6af857ec-2805-4516-b2ec-3de9da27cded: order CONFIRMED, stock RELEASED", "31a606dc-1b41-43c5-b913-fe9e0cb3ae6b: order CONFIRMED, stock RELEASED"]}
+{"check": "stock adds up", "ok": true, "checked": 8, "problems": 0, "examples": []}
+{"check": "redis stock matches postgres", "ok": true, "checked": 8, "problems": 0, "examples": []}
+{"check": "confirmed orders have an invoice", "ok": true, "checked": 179, "problems": 0, "examples": []}
+{"passed": 6, "failed": ["no order is stuck", "reservations match orders"]}

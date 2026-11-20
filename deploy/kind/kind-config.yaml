@@ -1,0 +1,18 @@
+# Local Kubernetes cluster for Phase 2: 1 control plane and 2 workers, each a Docker container.
+# Create it with deploy/kind/create-cluster.sh, which also starts the local image registry.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: orderflow
+# Lets containerd read per-registry settings, so nodes can pull from the local registry.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+# Pinned node image (Kubernetes 1.37.0), the default of kind v0.33.0.
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+  - role: worker
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5

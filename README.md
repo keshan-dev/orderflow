@@ -45,3 +45,20 @@ Some host ports differ from the usual defaults. Kafka (29092) and S3 (7333) move
 dc down -v    # stops the stack and deletes all data volumes
 dc up -d
 ```
+
+## Kubernetes cluster (Phase 2)
+
+You need kind, kubectl and helm. The cluster and the Compose stack do not fit in Docker memory at the same time, so stop the Compose stack first (`dc stop`).
+
+```bash
+bash deploy/kind/create-cluster.sh     # 3 node kind cluster and a local registry at 127.0.0.1:5001
+bash deploy/kind/install-addons.sh     # metrics-server, Envoy Gateway, cert-manager, namespaces
+kind delete cluster --name orderflow   # remove it again (the registry container stays)
+```
+
+The `orderflow` Gateway has no external address on kind. Reach it with a port forward:
+
+```bash
+kubectl get svc -n envoy-gateway-system   # the envoy-envoy-gateway-system-orderflow-... Service
+kubectl port-forward -n envoy-gateway-system svc/<that service> 8081:80
+```
